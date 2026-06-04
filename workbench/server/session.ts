@@ -1,0 +1,117 @@
+/**
+ * session.ts — AgentSession 生命周期管理
+ *
+ * 问题: 分叉树是核心功能,分叉会产生多个并发 AgentSession。需要按 sessionId
+ * 路由消息,并管理生命周期(关闭 tab 暂停、超时销毁、手机无 session 自动创建)。
+ *
+ * 方案: Map<sessionId, ManagedSession> 持有所有活跃 session。
+ *   - WebSocket 断连 → 30s 后标记 paused
+ *   - paused 后 2min 仍未重连 → 销毁 session
+ *   - 重连 → 清除销毁定时器,恢复
+ *   - server 重启 → 所有 session 丢失(by design,Pi SDK 的 SessionManager
+ *     已把消息持久化到 ~/.pi/agent/sessions,历史可回溯,但活跃运行态不保留)
+ */
+
+import { createAgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+// 让 Pi 扩展(workbench/save_artifact)写到与 server 相同的 workspace。
+// 扩展通过 process.env.WORKBENCH_WORKSPACE 读取此路径(SDK 同进程,共享 env)。
+const __dirname = dirname(fileURLToPath(import.meta.url));
+if (!process.env.WORKBENCH_WORKSPACE) {
+  process.env.WORKBENCH_WORKSPACE = join(__dirname, "..", "workspace");
+}
+
+export type WorkbenchMode = "work" | "create";
+
+const PAUSE_AFTER_MS = 30_000; // 断连 30s 标记 paused
+const DESTROY_AFTER_MS = 120_000; // paused 2min 销毁
+
+export interface ManagedSession {
+  id: string;
+  session: AgentSession;
+  project: string;
+  mode: WorkbenchMode;
+  paused: boolean;
+  pauseTimer?: NodeJS.Timeout;
+  destroyTimer?: NodeJS.Timeout;
+}
+
+export class SessionStore {
+  private sessions = new Map<string, ManagedSession>();
+
+  /** 创建新 session。失败时抛出,由调用方转成错误页/toast。 */
+  async create(project: string, mode: WorkbenchMode): Promise<ManagedSession> {
+    // 扩展的 before_agent_start 通过 globalThis 读当前模式注入对应 system prompt
+    (globalThis as any).__workbenchMode = mode;
+    const { session } = await createAgentSession({
+      cwd: process.cwd(),
+      // 默认读取 ~/.pi/agent 的 auth/models/extensions
+    });
+    const id = randomUUID();
+    const managed: ManagedSession = { id, session, project, mode, paused: false };
+    this.sessions.set(id, managed);
+    return managed;
+  }
+
+  /** 切换模式:更新 globalThis,影响该 session 下一次 before_agent_start。 */
+  setMode(id: string, mode: WorkbenchMode): void {
+    const m = this.sessions.get(id);
+    if (!m) return;
+    m.mode = mode;
+    (globalThis as any).__workbenchMode = mode;
+  }
+
+  get(id: string): ManagedSession | undefined {
+    return this.sessions.get(id);
+  }
+
+  /** 返回任一活跃 session(手机无 sessionId 时用),没有则返回 undefined。 */
+  any(): ManagedSession | undefined {
+    for (const m of this.sessions.values()) return m;
+    return undefined;
+  }
+
+  list(): ManagedSession[] {
+    return [...this.sessions.values()];
+  }
+
+  /** WebSocket 断连:启动 30s → paused → 再 2min → 销毁 的定时链。 */
+  onDisconnect(id: string): void {
+    const m = this.sessions.get(id);
+    if (!m) return;
+    this.clearTimers(m);
+    m.pauseTimer = setTimeout(() => {
+      m.paused = true;
+      m.destroyTimer = setTimeout(() => this.destroy(id), DESTROY_AFTER_MS);
+    }, PAUSE_AFTER_MS);
+  }
+
+  /** WebSocket 重连:取消暂停/销毁定时器,恢复 session。 */
+  onReconnect(id: string): ManagedSession | undefined {
+    const m = this.sessions.get(id);
+    if (!m) return undefined;
+    this.clearTimers(m);
+    m.paused = false;
+    return m;
+  }
+
+  private clearTimers(m: ManagedSession): void {
+    if (m.pauseTimer) clearTimeout(m.pauseTimer);
+    if (m.destroyTimer) clearTimeout(m.destroyTimer);
+    m.pauseTimer = undefined;
+    m.destroyTimer = undefined;
+  }
+
+  private destroy(id: string): void {
+    const m = this.sessions.get(id);
+    if (!m) return;
+    this.clearTimers(m);
+    void m.session.abort().catch(() => {});
+    this.sessions.delete(id);
+    console.log(`[session] destroyed ${id} (idle timeout)`);
+  }
+}

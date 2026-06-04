@@ -1,0 +1,17 @@
+# 依赖
+node_modules/
+
+# 工作台运行时产物(用户的作品,不入库)
+workbench/workspace/*
+!workbench/workspace/.gitkeep
+
+# gstack 本地产物
+.gstack/
+
+# 日志 / 临时
+*.log
+.DS_Store
+
+# 本地环境
+.env
+.env.local

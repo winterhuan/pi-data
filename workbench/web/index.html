@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi 工作台</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">Pi 工作台</span>
+    <div class="modes" role="tablist">
+      <button class="mode-btn active" data-mode="create" role="tab">创作</button>
+      <button class="mode-btn" data-mode="work" role="tab">工作</button>
+    </div>
+    <div class="topbar-right">
+      <span id="conn" class="conn" title="连接状态">●</span>
+      <button id="archive-btn" class="ghost-btn">档案室</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- 左:对话流 -->
+    <section class="chat" aria-label="对话">
+      <div id="stream" class="stream"></div>
+      <form id="composer" class="composer">
+        <textarea id="input" rows="2" placeholder="说点什么，或让它帮你创作…" autofocus></textarea>
+        <button type="submit" id="send">发送</button>
+      </form>
+    </section>
+
+    <!-- 右:活页本预览 -->
+    <section class="preview" aria-label="活页本预览">
+      <div class="preview-head">
+        <span id="preview-title">活页本</span>
+        <button id="qr-btn" class="ghost-btn" title="生成二维码到手机看">扫码看</button>
+      </div>
+      <div id="preview-body" class="preview-body">
+        <p class="empty-hint">产物会在这里实时长出来 —— 小说排成书页，剧本排成剧本页。</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- 档案室抽屉 -->
+  <aside id="archive" class="archive hidden" aria-label="档案室">
+    <div class="archive-head"><span>档案室</span><button id="archive-close" class="ghost-btn">×</button></div>
+    <div id="archive-body" class="archive-body"></div>
+  </aside>
+
+  <!-- 二维码弹层 -->
+  <div id="qr-modal" class="qr-modal hidden">
+    <div class="qr-card">
+      <img id="qr-img" alt="二维码">
+      <p id="qr-target" class="qr-target"></p>
+      <button id="qr-close" class="ghost-btn">关闭</button>
+    </div>
+  </div>
+
+  <!-- toast 通知 -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

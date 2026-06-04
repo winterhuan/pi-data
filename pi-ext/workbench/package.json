@@ -1,0 +1,16 @@
+{
+  "name": "pi-extension-workbench",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "工作台连接器:save_artifact 工具 + 工作/创作模式切换",
+  "scripts": {
+    "clean": "echo 'nothing to clean'",
+    "build": "echo 'nothing to build'",
+    "check": "echo 'nothing to check'"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {}
+}

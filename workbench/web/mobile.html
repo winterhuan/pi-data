@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Pi 工作台 · 手机</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .mobile-wrap { max-width: 100%; padding: 1rem; display: flex; flex-direction: column; height: 100vh; gap: 1rem; }
+    .mobile-stream { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; }
+    .mobile-input { display: flex; flex-direction: column; gap: .5rem; }
+    .mobile-input textarea { width: 100%; min-height: 5rem; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 10px; padding: .8rem; font: inherit; }
+    .mobile-input button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: .9rem; font-size: 1rem; font-weight: 600; }
+    .mobile-hint { color: var(--fg-dim); font-size: .85rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <header class="topbar"><span class="brand">Pi 工作台</span><span id="conn" class="conn">●</span></header>
+  <div class="mobile-wrap">
+    <p class="mobile-hint">随手把灵感甩进去，电脑端会接着写。</p>
+    <div id="stream" class="mobile-stream"></div>
+    <form id="composer" class="mobile-input">
+      <textarea id="input" placeholder="一句话、一个点子、一个剧情转折…" autofocus></textarea>
+      <button type="submit">发送到工作台</button>
+    </form>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="/mobile.js"></script>
+</body>
+</html>

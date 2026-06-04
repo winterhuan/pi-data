@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>预览 · Pi 工作台</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { display: block; }
+    .preview-page { max-width: 44rem; margin: 0 auto; padding: 1.5rem 1.2rem 4rem; }
+    .preview-page-head { color: var(--fg-dim); font-size: .85rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: .75rem; }
+  </style>
+</head>
+<body>
+  <div class="preview-page">
+    <div id="head" class="preview-page-head">加载中…</div>
+    <div id="body"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton short"></div></div>
+  </div>
+  <script type="module">
+    const params = new URLSearchParams(location.search);
+    const project = params.get("project");
+    const file = params.get("file");
+    const head = document.getElementById("head");
+    const body = document.getElementById("body");
+    if (!project || !file) {
+      head.textContent = "缺少参数";
+      body.innerHTML = `<p class="error-hint">无法确定要预览的产物</p>`;
+    } else {
+      head.textContent = `${project} / ${file}`;
+      fetch(`/api/preview?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`)
+        .then((r) => r.json())
+        .then((d) => { body.innerHTML = d.html || `<p class="empty-hint">空内容</p>`; })
+        .catch(() => { body.innerHTML = `<p class="error-hint">预览暂时无法加载</p>`; });
+    }
+  </script>
+</body>
+</html>

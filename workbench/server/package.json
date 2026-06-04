@@ -1,0 +1,25 @@
+{
+  "name": "pi-workbench-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi 本地智能工作台 — SDK 嵌入式 server",
+  "scripts": {
+    "dev": "node --import tsx index.ts",
+    "start": "node --import tsx index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "ws": "^8.18.0",
+    "marked": "^14.1.0",
+    "fountain-js": "^1.2.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "vitest": "^2.1.0",
+    "@types/ws": "^8.5.0",
+    "@types/node": "^22.0.0"
+  }
+}
