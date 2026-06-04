@@ -44,15 +44,23 @@ export async function handleApi(
     if (p === "/api/artifact") {
       const project = url.searchParams.get("project") ?? "";
       const file = url.searchParams.get("file") ?? "";
-      const content = await readArtifact(project, file);
-      return json(res, 200, { project, file, content });
+      try {
+        const content = await readArtifact(project, file);
+        return json(res, 200, { project, file, content });
+      } catch {
+        return json(res, 404, { error: "artifact not found" });
+      }
     }
 
     if (p === "/api/preview") {
       const project = url.searchParams.get("project") ?? "";
       const file = url.searchParams.get("file") ?? "";
-      const content = await readArtifact(project, file);
-      return json(res, 200, { html: renderArtifact(file, content) });
+      try {
+        const content = await readArtifact(project, file);
+        return json(res, 200, { html: renderArtifact(file, content) });
+      } catch {
+        return json(res, 404, { error: "artifact not found" });
+      }
     }
 
     if (p === "/api/qr") {
