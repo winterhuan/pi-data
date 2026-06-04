@@ -15,6 +15,7 @@
     </div>
     <div class="topbar-right">
       <span id="conn" class="conn" title="连接状态">●</span>
+      <button id="fork-btn" class="ghost-btn" title="分叉:从某个历史点开新的一条线">分叉树</button>
       <button id="archive-btn" class="ghost-btn">档案室</button>
     </div>
   </header>
@@ -45,6 +46,14 @@
   <aside id="archive" class="archive hidden" aria-label="档案室">
     <div class="archive-head"><span>档案室</span><button id="archive-close" class="ghost-btn">×</button></div>
     <div id="archive-body" class="archive-body"></div>
+  </aside>
+
+  <!-- 分叉树抽屉 -->
+  <aside id="fork" class="archive hidden" aria-label="分叉树">
+    <div class="archive-head"><span>分叉树</span><button id="fork-close" class="ghost-btn">×</button></div>
+    <div id="fork-body" class="archive-body">
+      <p class="fork-hint">点任一历史消息,从那里开一条新的线。当前所在的点用 ◀ 标出。</p>
+    </div>
   </aside>
 
   <!-- 二维码弹层 -->

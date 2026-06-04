@@ -65,6 +65,28 @@ export class SessionStore {
     (globalThis as any).__workbenchMode = mode;
   }
 
+  /**
+   * 分叉树数据:返回可分叉的用户消息点 + 当前 leaf 位置。
+   * Pi 的会话树是单文件内 entry 树,每个用户消息是一个可回溯的分叉点。
+   */
+  forkPoints(id: string): { points: Array<{ entryId: string; text: string }>; leafId: string | null } {
+    const m = this.sessions.get(id);
+    if (!m) return { points: [], leafId: null };
+    const points = m.session.getUserMessagesForForking?.() ?? [];
+    const leafId = m.session.sessionManager?.getLeafId?.() ?? null;
+    return { points, leafId };
+  }
+
+  /**
+   * 分叉:把 leaf 移到某个历史用户消息处。之后再 prompt 就从那里长出新分支。
+   * navigateTree 在同一 session 文件内移动,不创建新 session(Pi 的设计)。
+   */
+  async fork(id: string, targetEntryId: string): Promise<void> {
+    const m = this.sessions.get(id);
+    if (!m) throw new Error("session not found");
+    await m.session.navigateTree(targetEntryId);
+  }
+
   get(id: string): ManagedSession | undefined {
     return this.sessions.get(id);
   }

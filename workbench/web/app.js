@@ -52,6 +52,18 @@ function handle(msg) {
   if (msg.kind === "mode_set") {
     return;
   }
+  if (msg.kind === "fork_points") {
+    renderForkPoints(msg.points, msg.leafId);
+    return;
+  }
+  if (msg.kind === "forked") {
+    // 分叉成功:清空对话流(从分叉点重新长),刷新分叉抽屉
+    stream.innerHTML = "";
+    curAssistant = null;
+    renderForkPoints(msg.points, msg.leafId);
+    toast("已分叉,从这里开一条新线");
+    return;
+  }
   if (msg.kind === "error") {
     toast("出错了：" + msg.message);
     finishAssistant();
@@ -199,7 +211,45 @@ async function openProject(name) {
   }
 }
 
-// ---- 二维码 ----
+// ---- 分叉树 ----
+$("#fork-btn").addEventListener("click", () => {
+  $("#fork").classList.remove("hidden");
+  if (!sessionId) {
+    $("#fork-body").innerHTML = `<p class="empty-hint">还没有对话,先说点什么再来分叉。</p>`;
+    return;
+  }
+  sendMsg({ type: "fork_points", sessionId });
+});
+$("#fork-close").addEventListener("click", () => $("#fork").classList.add("hidden"));
+
+function renderForkPoints(points, leafId) {
+  const body = $("#fork-body");
+  if (!points || !points.length) {
+    body.innerHTML = `<p class="empty-hint">还没有可分叉的消息。</p>`;
+    return;
+  }
+  body.innerHTML = `<p class="fork-hint">点任一历史消息,从那里开一条新的线。</p>`;
+  points.forEach((p, i) => {
+    const node = document.createElement("div");
+    node.className = "fork-node";
+    const isLeaf = leafId && p.entryId === leafId;
+    node.innerHTML =
+      `<span class="fork-dot">${i + 1}</span>` +
+      `<span class="fork-text">${escapeHtmlClient(p.text).slice(0, 60)}</span>` +
+      (isLeaf ? `<span class="fork-here">◀ 当前</span>` : "");
+    node.addEventListener("click", () => {
+      sendMsg({ type: "fork", sessionId, payload: { entryId: p.entryId } });
+      $("#fork").classList.add("hidden");
+    });
+    body.appendChild(node);
+  });
+}
+
+function escapeHtmlClient(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
 $("#qr-btn").addEventListener("click", async () => {
   const project = previewBody.dataset.project;
   const file = previewBody.dataset.file;

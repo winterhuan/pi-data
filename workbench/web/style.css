@@ -96,6 +96,15 @@ body {
 .file-item { padding: .5rem .75rem; background: var(--bg3); border-radius: 6px; cursor: pointer; font-size: .9rem; }
 .file-item:hover { background: #333; }
 
+/* 分叉树 */
+.fork-hint { color: var(--fg-dim); font-size: .8rem; margin: 0 0 .75rem; }
+.fork-node { display: flex; align-items: center; gap: .6rem; padding: .6rem .7rem; background: var(--bg3); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 6px; cursor: pointer; position: relative; }
+.fork-node:hover { border-left-color: var(--accent); }
+.fork-dot { flex: 0 0 1.4rem; height: 1.4rem; line-height: 1.4rem; text-align: center; background: var(--bg2); border-radius: 50%; font-size: .75rem; color: var(--fg-dim); }
+.fork-text { flex: 1; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fork-here { flex: 0 0 auto; font-size: .7rem; color: var(--accent); }
+.fork-node:has(.fork-here) { border-left-color: var(--accent); }
+
 /* 二维码 */
 .qr-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 20; }
 .qr-modal.hidden { display: none; }

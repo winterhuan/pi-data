@@ -21,7 +21,7 @@ import type { SessionStore, WorkbenchMode } from "./session.ts";
 
 interface InboundMsg {
   sessionId?: string;
-  type: "create" | "prompt" | "set_mode";
+  type: "create" | "prompt" | "set_mode" | "fork_points" | "fork";
   payload?: any;
 }
 
@@ -91,6 +91,25 @@ export function attachWebSocket(server: Server, store: SessionStore): void {
           if (id) store.setMode(id, (msg.payload?.mode ?? "create") as WorkbenchMode);
           const m = id ? store.get(id) : undefined;
           send({ kind: "mode_set", sessionId: m?.id, mode: m?.mode });
+          return;
+        }
+
+        if (msg.type === "fork_points") {
+          const id = msg.sessionId ?? boundId;
+          if (!id) { send({ kind: "fork_points", points: [], leafId: null }); return; }
+          const { points, leafId } = store.forkPoints(id);
+          send({ kind: "fork_points", sessionId: id, points, leafId });
+          return;
+        }
+
+        if (msg.type === "fork") {
+          const id = msg.sessionId ?? boundId;
+          const target = msg.payload?.entryId;
+          if (!id || !target) { send({ kind: "error", message: "fork 缺少 sessionId/entryId" }); return; }
+          await store.fork(id, target);
+          // 分叉后回传新的分叉点状态,前端刷新树
+          const { points, leafId } = store.forkPoints(id);
+          send({ kind: "forked", sessionId: id, points, leafId });
           return;
         }
 
