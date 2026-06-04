@@ -1,8 +1,7 @@
-// mobile.js — 手机灵感入口
+// mobile.js — 手机完整操控版
 //
-// 问题: 躺床上想到一句话,要能甩进工作台,电脑端 Pi 接着写。
-// 方案: 复用同一 WebSocket 协议。无 sessionId 发 prompt → server 自动建 session(D8)。
-//   手机端只读流式回复的简短确认,完整创作在电脑端看。
+// 三个面板:对话(流式)、档案室(项目+产物)、预览(渲染)
+// 模式切换、WebSocket 自动重连,与桌面端共享同一 server。
 
 const $ = (s) => document.querySelector(s);
 const stream = $("#stream");
@@ -11,25 +10,38 @@ const conn = $("#conn");
 
 let ws = null, sessionId = null, cur = null, reconnectTimer = null;
 
+// ── WebSocket ──
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}`);
-  ws.onopen = () => { conn.classList.add("ok"); if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; } };
+  ws.onopen = () => {
+    conn.classList.add("ok");
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
   ws.onclose = () => { conn.classList.remove("ok"); reconnectTimer = setTimeout(connect, 1500); };
   ws.onerror = () => ws.close();
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
 }
 
+function sendMsg(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  else toast("未连接,重连中…");
+}
+
 function handle(msg) {
   if (msg.kind === "created") { sessionId = msg.sessionId; return; }
-  if (msg.kind === "error") { toast("出错：" + msg.message); cur = null; return; }
+  if (msg.kind === "error") { toast("出错: " + msg.message); cur = null; return; }
+  if (msg.kind === "mode_set") return;
   if (msg.kind === "agent_event") {
     const e = msg.event;
     if (e.type === "message_update" && e.assistantMessageEvent?.type === "text_delta") {
       if (!cur) cur = addBubble("assistant", "");
       cur.textContent += e.assistantMessageEvent.delta;
       stream.scrollTop = stream.scrollHeight;
-    } else if (e.type === "agent_end") cur = null;
+    } else if (e.type === "tool_execution_end" && e.toolName === "save_artifact") {
+      const { project, file } = e.result?.details ?? {};
+      if (project && file) { toast(`已保存 ${file}`); loadPreview(project, file); }
+    } else if (e.type === "agent_end") { cur = null; }
   }
 }
 
@@ -42,17 +54,91 @@ function addBubble(role, text) {
   return d;
 }
 
+// ── 对话提交 ──
 $("#composer").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const text = input.value.trim();
   if (!text) return;
   addBubble("user", text);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "prompt", sessionId, payload: { text } }));
-  } else toast("未连接，正在重连…");
+  sendMsg({ type: "prompt", sessionId, payload: { text } });
   input.value = "";
 });
 
+// ── 模式切换 ──
+document.querySelectorAll(".m-mode-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".m-mode-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    sendMsg({ type: "set_mode", sessionId, payload: { mode: btn.dataset.mode } });
+    toast(btn.dataset.mode === "work" ? "工作模式" : "创作模式");
+  });
+});
+
+// ── 标签页切换 ──
+document.querySelectorAll(".m-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".m-tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".m-panel").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    const panel = document.getElementById("tab-" + tab.dataset.tab);
+    panel.classList.add("active");
+    if (tab.dataset.tab === "archive") loadArchive();
+  });
+});
+
+// ── 档案室 ──
+async function loadArchive() {
+  const body = $("#archive-body");
+  body.innerHTML = `<div class="spinner"></div>`;
+  try {
+    const projects = await (await fetch("/api/projects")).json();
+    if (!projects.length) { body.innerHTML = `<p class="empty-hint">还没有项目</p>`; return; }
+    body.innerHTML = "";
+    for (const p of projects) {
+      const card = document.createElement("div");
+      card.className = "proj-card";
+      card.innerHTML = `<strong>${p.name}</strong><span class="proj-meta">${p.type} · ${p.lastUpdated.slice(0,10)}</span>`;
+      card.addEventListener("click", () => loadProject(p.name));
+      body.appendChild(card);
+    }
+  } catch { body.innerHTML = `<p class="error-hint">加载失败</p>`; }
+}
+
+async function loadProject(name) {
+  const body = $("#archive-body");
+  body.innerHTML = `<div class="spinner"></div>`;
+  try {
+    const files = await (await fetch(`/api/project/${encodeURIComponent(name)}`)).json();
+    body.innerHTML = `<button class="ghost-btn" id="back">← 返回</button><p class="fork-hint">${name}</p>`;
+    $("#back").addEventListener("click", loadArchive);
+    for (const f of files) {
+      const item = document.createElement("div");
+      item.className = "file-item";
+      item.textContent = f;
+      item.addEventListener("click", () => {
+        loadPreview(name, f);
+        // 切到预览面板
+        document.querySelectorAll(".m-tab").forEach((t) => t.classList.remove("active"));
+        document.querySelectorAll(".m-panel").forEach((p) => p.classList.remove("active"));
+        document.querySelector('[data-tab="preview"]').classList.add("active");
+        document.getElementById("tab-preview").classList.add("active");
+      });
+      body.appendChild(item);
+    }
+  } catch { body.innerHTML = `<p class="error-hint">加载失败</p>`; }
+}
+
+// ── 预览 ──
+async function loadPreview(project, file) {
+  const body = $("#preview-body");
+  body.innerHTML = `<p class="m-preview-head">${project} / ${file}</p><div class="skeleton"></div><div class="skeleton short"></div>`;
+  try {
+    const data = await (await fetch(`/api/preview?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`)).json();
+    body.innerHTML = `<p class="m-preview-head">${project} / ${file}</p>` + (data.html || `<p class="empty-hint">空内容</p>`);
+  } catch { body.innerHTML = `<p class="error-hint">预览加载失败</p>`; }
+}
+
+// ── toast ──
 let toastTimer = null;
 function toast(t) {
   const el = $("#toast");

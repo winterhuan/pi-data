@@ -17,7 +17,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { writeFile, mkdir, readFile } from "node:fs/promises";
+import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 // workspace 根目录:环境变量优先(server 设置),否则默认仓库内 workbench/workspace
@@ -38,7 +38,9 @@ const WORK_PROMPT =
 const CREATE_PROMPT =
   "你现在处于「创作模式」。帮用户创作散文、论文、小说、短剧、电影剧本。" +
   "剧本/电影用 Fountain 格式(场景标题大写、角色名居中),用 save_artifact 存为 .fountain;" +
-  "其余文学作品用 Markdown 存为 .md。注重结构、文学性和情感真实。";
+  "其余文学作品用 Markdown 存为 .md。注重结构、文学性和情感真实。" +
+  "写长篇(多章节小说/剧本/电影)时,先用 read_bible 调取该作品的人物/大纲/世界观/伏笔," +
+  "保持前后一致;新增设定用 save_bible 存档,确保埋下的伏笔后续能收回。";
 
 function safeSeg(s: string): string {
   return s.replace(/[/\\]/g, "_").trim() || "未命名";
@@ -110,6 +112,88 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: `已保存到 ${project}/${file}` }],
         details: { project, file, type: params.type },
+      };
+    },
+  });
+
+  // ── 长篇结构化大脑(创作圣经)──────────────────────────────
+  // 问题: 写长篇(小说/剧本/电影)时,AI 记不住第 3 章埋的伏笔要在第 18 章收,
+  //   也记不住人物设定、世界观规则。上下文窗口装不下整本书。
+  // 方案: 把结构化设定存进 project 的 bible/ 子目录(与正文 artifacts/ 分开)。
+  //   save_bible 写入,read_bible 在创作前读回全部设定 → 注入上下文。
+
+  const BIBLE_KINDS = ["character", "outline", "worldbuilding", "foreshadowing"] as const;
+
+  pi.registerTool({
+    name: "save_bible",
+    label: "保存创作设定",
+    description:
+      "保存长篇作品的结构化设定:人物表、章节大纲、世界观、伏笔追踪。这些是「创作圣经」," +
+      "与正文分开存放,供后续章节创作时调取,保证长篇前后一致(如第 3 章的伏笔在第 18 章收回)。",
+    promptSnippet:
+      "写长篇小说/剧本/电影时,把人物、大纲、世界观、伏笔用 save_bible 存为设定,后续章节据此保持一致。",
+    promptGuidelines: [
+      "新增/更新人物用 save_bible kind=character;章节大纲用 outline;世界观规则用 worldbuilding;埋下或回收伏笔用 foreshadowing。",
+      "同一作品的设定和正文用同一个 project 名。写新章节前先 read_bible 调取已有设定。",
+    ],
+    parameters: Type.Object({
+      project: Type.String({ description: "作品名,与正文 save_artifact 用同一个" }),
+      kind: Type.Union(BIBLE_KINDS.map((k) => Type.Literal(k))),
+      name: Type.String({ description: "条目名,如「主角-林越」「第三章大纲」「伏笔-那枚旧怀表」" }),
+      content: Type.String({ description: "设定内容(Markdown)" }),
+    }),
+    async execute(_id, params, _s, _u, _ctx: ExtensionContext) {
+      const project = safeSeg(params.project);
+      const dir = join(WORKSPACE, project, "bible", params.kind);
+      await mkdir(dir, { recursive: true });
+      const file = safeSeg(params.name) + ".md";
+      await writeFile(join(dir, file), params.content);
+      return {
+        content: [{ type: "text", text: `已存入创作圣经:${project}/${params.kind}/${file}` }],
+        details: { project, kind: params.kind, name: params.name },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "read_bible",
+    label: "读取创作设定",
+    description:
+      "读回某作品的全部创作圣经(人物表、大纲、世界观、伏笔)。写新章节、保持长篇一致性前先调用它。",
+    promptSnippet: "继续写长篇前,先用 read_bible 调取该作品的人物/大纲/世界观/伏笔设定。",
+    promptGuidelines: [
+      "写长篇作品的新章节、新场景前,先 read_bible 确认人物设定和未回收的伏笔。",
+    ],
+    parameters: Type.Object({
+      project: Type.String({ description: "作品名" }),
+    }),
+    async execute(_id, params, _s, _u, _ctx: ExtensionContext) {
+      const project = safeSeg(params.project);
+      const bibleDir = join(WORKSPACE, project, "bible");
+      const sections: string[] = [];
+      for (const kind of BIBLE_KINDS) {
+        const kindDir = join(bibleDir, kind);
+        let files: string[];
+        try {
+          files = await readdir(kindDir);
+        } catch {
+          continue;
+        }
+        if (!files.length) continue;
+        const label = { character: "人物", outline: "大纲", worldbuilding: "世界观", foreshadowing: "伏笔" }[kind];
+        const parts: string[] = [`## ${label}`];
+        for (const f of files) {
+          const body = await readFile(join(kindDir, f), "utf-8");
+          parts.push(`### ${f.replace(/\.md$/, "")}\n${body}`);
+        }
+        sections.push(parts.join("\n\n"));
+      }
+      const text = sections.length
+        ? `# 《${project}》创作圣经\n\n${sections.join("\n\n---\n\n")}`
+        : `《${project}》还没有任何创作设定。`;
+      return {
+        content: [{ type: "text", text }],
+        details: { project, kinds: BIBLE_KINDS.filter(() => true) },
       };
     },
   });

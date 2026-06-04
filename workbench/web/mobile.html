@@ -6,24 +6,66 @@
   <title>Pi 工作台 · 手机</title>
   <link rel="stylesheet" href="/style.css">
   <style>
-    .mobile-wrap { max-width: 100%; padding: 1rem; display: flex; flex-direction: column; height: 100vh; gap: 1rem; }
-    .mobile-stream { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; }
-    .mobile-input { display: flex; flex-direction: column; gap: .5rem; }
-    .mobile-input textarea { width: 100%; min-height: 5rem; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 10px; padding: .8rem; font: inherit; }
-    .mobile-input button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: .9rem; font-size: 1rem; font-weight: 600; }
-    .mobile-hint { color: var(--fg-dim); font-size: .85rem; text-align: center; }
+    body { display: flex; flex-direction: column; height: 100vh; }
+    .m-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg2); }
+    .m-tab { flex: 1; padding: .6rem; text-align: center; font-size: .85rem; color: var(--fg-dim); cursor: pointer; border: 0; background: 0; }
+    .m-tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+    .m-panel { display: none; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+    .m-panel.active { display: flex; }
+    /* 对话面板 */
+    .m-stream { flex: 1; overflow-y: auto; padding: .75rem; display: flex; flex-direction: column; gap: .5rem; }
+    .m-modes { display: flex; gap: .4rem; padding: .5rem .75rem; background: var(--bg2); border-bottom: 1px solid var(--border); }
+    .m-mode-btn { flex: 1; padding: .4rem; font-size: .8rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--fg-dim); cursor: pointer; }
+    .m-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .m-composer { display: flex; gap: .5rem; padding: .5rem .75rem; border-top: 1px solid var(--border); background: var(--bg2); }
+    .m-composer textarea { flex: 1; min-height: 3rem; max-height: 8rem; resize: none; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: .5rem; font: inherit; }
+    .m-composer button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 0 1rem; font-weight: 600; }
+    /* 档案室面板 */
+    .m-archive { flex: 1; overflow-y: auto; padding: .75rem; display: flex; flex-direction: column; gap: .5rem; }
+    /* 预览面板 */
+    .m-preview { flex: 1; overflow-y: auto; padding: 1rem; }
+    .m-preview-head { font-size: .8rem; color: var(--fg-dim); margin-bottom: .75rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
   </style>
 </head>
 <body>
-  <header class="topbar"><span class="brand">Pi 工作台</span><span id="conn" class="conn">●</span></header>
-  <div class="mobile-wrap">
-    <p class="mobile-hint">随手把灵感甩进去，电脑端会接着写。</p>
-    <div id="stream" class="mobile-stream"></div>
-    <form id="composer" class="mobile-input">
-      <textarea id="input" placeholder="一句话、一个点子、一个剧情转折…" autofocus></textarea>
-      <button type="submit">发送到工作台</button>
+  <header class="topbar">
+    <span class="brand">Pi 工作台</span>
+    <span id="conn" class="conn">●</span>
+  </header>
+
+  <div class="m-tabs">
+    <button class="m-tab active" data-tab="chat">对话</button>
+    <button class="m-tab" data-tab="archive">档案室</button>
+    <button class="m-tab" data-tab="preview">预览</button>
+  </div>
+
+  <!-- 对话面板 -->
+  <div id="tab-chat" class="m-panel active">
+    <div class="m-modes">
+      <button class="m-mode-btn active" data-mode="create">创作</button>
+      <button class="m-mode-btn" data-mode="work">工作</button>
+    </div>
+    <div id="stream" class="m-stream"></div>
+    <form id="composer" class="m-composer">
+      <textarea id="input" placeholder="灵感、想法、指令…" autofocus></textarea>
+      <button type="submit">发</button>
     </form>
   </div>
+
+  <!-- 档案室面板 -->
+  <div id="tab-archive" class="m-panel">
+    <div class="m-archive" id="archive-body">
+      <p class="empty-hint">加载中…</p>
+    </div>
+  </div>
+
+  <!-- 预览面板 -->
+  <div id="tab-preview" class="m-panel">
+    <div class="m-preview" id="preview-body">
+      <p class="empty-hint">在档案室点一个产物来预览。</p>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
   <script type="module" src="/mobile.js"></script>
 </body>

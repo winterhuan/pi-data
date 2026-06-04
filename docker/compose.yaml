@@ -1,0 +1,41 @@
+# Pi 本地智能工作台 — Docker Compose
+#
+# 使用:
+#   docker compose up -d          # 后台启动
+#   docker compose logs -f        # 看日志
+#   docker compose down           # 停止
+#
+# 首次启动前确认 ~/.pi/agent/auth.json 里有 API key 配置。
+
+services:
+  workbench:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "7777:7777"
+    volumes:
+      # ~/.pi 只读:让容器能读凭据和模型配置,但不让它改你的 Pi 全局设置
+      - "${HOME}/.pi:/root/.pi:ro"
+      # workspace 读写:产物落地到宿主机,容器重建后不丢
+      - "${PWD}/workbench/workspace:/workspace:rw"
+    environment:
+      # 覆盖 Pi 只读挂载后扩展 symlink 需要写的路径问题
+      # 扩展已在 build 时复制进镜像,无需从宿主挂载
+      WORKBENCH_WORKSPACE: /workspace
+    restart: unless-stopped
+    # 只能访问局域网,不允许出口连接外部服务(除 LLM API)
+    # 如需更严格隔离可取消注释下面的网络配置
+    # networks:
+    #   - isolated
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7777/api/projects"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+# networks:
+#   isolated:
+#     driver: bridge
+#     internal: false  # 设为 true 可切断出口网络
