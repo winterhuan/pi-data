@@ -17,6 +17,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+import { createProject } from "./workspace.ts";
 
 // 让 Pi 扩展(workbench/save_artifact)写到与 server 相同的 workspace。
 // 扩展通过 process.env.WORKBENCH_WORKSPACE 读取此路径(SDK 同进程,共享 env)。
@@ -27,9 +28,17 @@ if (!process.env.WORKBENCH_WORKSPACE) {
 
 export type WorkbenchMode = "work" | "create";
 
-// 问题: globalThis.__workbenchMode 在并发 session 下会互相覆盖。
-// 方案: 改用 Map<sessionId, mode>,扩展通过 import 读取。
-export const sessionModes = new Map<string, WorkbenchMode>();
+// 问题: 单个 global mode 在并发 session 下会互相覆盖。
+// 方案: 用挂在 globalThis 上的 Map<sessionId, mode>。
+// Pi 扩展从 symlink 路径加载,不可靠地 import server 文件;因此只共享这份进程内状态。
+type WorkbenchGlobals = typeof globalThis & {
+  __workbenchSessionModes?: Map<string, WorkbenchMode>;
+};
+
+const workbenchGlobals = globalThis as WorkbenchGlobals;
+export const sessionModes =
+  workbenchGlobals.__workbenchSessionModes ?? new Map<string, WorkbenchMode>();
+workbenchGlobals.__workbenchSessionModes = sessionModes;
 
 const PAUSE_AFTER_MS = 30_000; // 断连 30s 标记 paused
 const DESTROY_AFTER_MS = 120_000; // paused 2min 销毁
@@ -49,6 +58,7 @@ export class SessionStore {
 
   /** 创建新 session。失败时抛出,由调用方转成错误页/toast。 */
   async create(project: string, mode: WorkbenchMode): Promise<ManagedSession> {
+    await createProject(project);
     // T2: 用 project 专属子目录作为 cwd,确保目录存在
     const projectCwd = join(
       process.env.WORKBENCH_WORKSPACE ?? join(__dirname, "..", "workspace"),
@@ -60,7 +70,6 @@ export class SessionStore {
       // 默认读取 ~/.pi/agent 的 auth/models/extensions
     });
     const id = randomUUID();
-    // T1: 用 sessionModes Map 替代 globalThis,避免并发 session 互相覆盖
     sessionModes.set(id, mode);
     const managed: ManagedSession = { id, session, project, mode, paused: false };
     this.sessions.set(id, managed);

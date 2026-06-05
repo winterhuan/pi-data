@@ -217,6 +217,29 @@ export async function createProject(name: string): Promise<void> {
   const dir = projectDir(name);
   await mkdir(join(dir, "artifacts"), { recursive: true });
   await mkdir(join(dir, "sessions"), { recursive: true });
+  const now = new Date().toISOString();
+
+  const metaPath = join(dir, "meta.json");
+  let meta: any = {};
+  try {
+    meta = JSON.parse(await readFile(metaPath, "utf-8"));
+  } catch {
+    meta = { name, type: "create", created: now };
+  }
+  meta.name = name;
+  meta.type = meta.type ?? "create";
+  meta.lastUpdated = meta.lastUpdated ?? now;
+  await writeFile(metaPath, JSON.stringify(meta, null, 2));
+
+  await withIndexLock(async () => {
+    const index = await readIndex();
+    const existing = index.find((e) => e.name === name);
+    if (!existing) {
+      index.push({ id: name, name, type: meta.type, lastUpdated: meta.lastUpdated });
+      await writeIndex(index);
+    }
+  });
+
   const skillsDest = join(dir, ".pi", "skills");
   await mkdir(skillsDest, { recursive: true });
   const templatesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "skills-templates");

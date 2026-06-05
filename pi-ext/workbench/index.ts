@@ -16,24 +16,96 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { sessionModes } from "../../workbench/server/session.ts";
 import { Type } from "typebox";
 import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
-import { saveArtifact as wsSaveArtifact } from "../../workbench/server/workspace.ts";
+import { join, resolve } from "node:path";
 
 // workspace 根目录:环境变量优先(server 设置),否则默认仓库内 workbench/workspace
 const WORKSPACE =
   process.env.WORKBENCH_WORKSPACE ??
   join(process.cwd(), "workbench", "workspace");
+const WORKSPACE_ROOT = resolve(WORKSPACE);
 
 // 当前模式从 sessionModes Map 读取,支持并发 session 各自独立模式
 type Mode = "work" | "create";
+type WorkbenchGlobals = typeof globalThis & {
+  __workbenchSessionModes?: Map<string, Mode>;
+};
+
+function sessionModes(): Map<string, Mode> {
+  const g = globalThis as WorkbenchGlobals;
+  return g.__workbenchSessionModes ?? new Map<string, Mode>();
+}
+
 function currentMode(sessionId?: string): Mode {
-  if (sessionId) return (sessionModes.get(sessionId) as Mode) ?? "create";
+  const modes = sessionModes();
+  if (sessionId) return modes.get(sessionId) ?? "create";
   // fallback: 取最近设置的模式
-  const last = [...sessionModes.values()].pop();
+  const last = [...modes.values()].pop();
   return last ?? "create";
+}
+
+async function readIndex(): Promise<Array<{ id: string; name: string; type: string; lastUpdated: string }>> {
+  try {
+    return JSON.parse(await readFile(workspacePath("index.json"), "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+let indexLock: Promise<void> = Promise.resolve();
+async function withIndexLock<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = indexLock;
+  let unlock!: () => void;
+  indexLock = new Promise<void>((resolve) => {
+    unlock = resolve;
+  });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    unlock();
+  }
+}
+
+async function saveArtifact(opts: {
+  project: string;
+  type: string;
+  filename: string;
+  content: string;
+  timestamp: string;
+}): Promise<void> {
+  const project = safeSeg(opts.project);
+  const dir = workspacePath(project);
+  await mkdir(join(dir, "artifacts"), { recursive: true });
+  await mkdir(join(dir, "sessions"), { recursive: true });
+
+  const file = safeSeg(opts.filename) || "artifact.txt";
+  await writeFile(join(dir, "artifacts", file), opts.content);
+
+  const metaPath = join(dir, "meta.json");
+  let meta: any = {};
+  try {
+    meta = JSON.parse(await readFile(metaPath, "utf-8"));
+  } catch {
+    meta = { name: opts.project, type: opts.type, created: opts.timestamp };
+  }
+  meta.lastUpdated = opts.timestamp;
+  meta.type = opts.type;
+  await writeFile(metaPath, JSON.stringify(meta, null, 2));
+
+  await withIndexLock(async () => {
+    const index = await readIndex();
+    const existing = index.find((e) => e.name === opts.project);
+    if (existing) {
+      existing.lastUpdated = opts.timestamp;
+      existing.type = opts.type;
+    } else {
+      index.push({ id: opts.project, name: opts.project, type: opts.type, lastUpdated: opts.timestamp });
+    }
+    await mkdir(WORKSPACE_ROOT, { recursive: true });
+    await writeFile(workspacePath("index.json"), JSON.stringify(index, null, 2));
+  });
 }
 
 const WORK_PROMPT =
@@ -48,7 +120,15 @@ const CREATE_PROMPT =
   "保持前后一致;新增设定用 save_bible 存档,确保埋下的伏笔后续能收回。";
 
 function safeSeg(s: string): string {
-  return s.replace(/[/\\]/g, "_").trim() || "未命名";
+  return s.replace(/\.\./g, "_").replace(/[/\\]/g, "_").trim() || "未命名";
+}
+
+function workspacePath(...segs: string[]): string {
+  const target = resolve(WORKSPACE_ROOT, ...segs);
+  if (target !== WORKSPACE_ROOT && !target.startsWith(WORKSPACE_ROOT + "/")) {
+    throw new Error("invalid workspace path");
+  }
+  return target;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -74,7 +154,7 @@ export default function (pi: ExtensionAPI) {
       content: Type.String({ description: "产物完整内容" }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx: ExtensionContext) {
-      await wsSaveArtifact({
+      await saveArtifact({
         project: params.project,
         type: params.type,
         filename: params.filename,
@@ -116,7 +196,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _s, _u, _ctx: ExtensionContext) {
       const project = safeSeg(params.project);
-      const dir = join(WORKSPACE, project, "bible", params.kind);
+      const dir = workspacePath(project, "bible", params.kind);
       await mkdir(dir, { recursive: true });
       const file = safeSeg(params.name) + ".md";
       await writeFile(join(dir, file), params.content);
@@ -141,10 +221,10 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, params, _s, _u, _ctx: ExtensionContext) {
       const project = safeSeg(params.project);
-      const bibleDir = join(WORKSPACE, project, "bible");
+      const bibleDir = workspacePath(project, "bible");
       const sections: string[] = [];
       for (const kind of BIBLE_KINDS) {
-        const kindDir = join(bibleDir, kind);
+        const kindDir = workspacePath(project, "bible", kind);
         let files: string[];
         try {
           files = await readdir(kindDir);

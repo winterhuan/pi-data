@@ -22,6 +22,15 @@
 
 SDK 嵌入式(Approach B):server 进程内直接 `createAgentSession()`,分叉树可直读 `sessionManager`。详见 `~/.gstack/projects/pi-data/ceo-plans/2026-06-04-pi-workbench.md`。
 
+### 扩展边界
+
+`pi-ext/workbench` 会被 symlink 到 `~/.pi/agent/extensions/workbench`,由 Pi SDK 按扩展路径加载。扩展代码不要 import `workbench/server/*`:相对路径会按 `~/.pi/agent/extensions/workbench` 解析,容易在启动时找不到模块。
+
+server 和扩展共享两类轻量状态:
+
+- `WORKBENCH_WORKSPACE`:server 启动时设置,扩展用它把 `save_artifact` / `save_bible` 写进同一个档案室。
+- `globalThis.__workbenchSessionModes`:server 写入 `Map<sessionId, mode>`,扩展在 `before_agent_start` 读取,按会话注入工作/创作 prompt。
+
 ## 前置条件
 
 - Pi 已全局安装(`pi --version` 应为 0.78+),`~/.pi/agent/` 配好 auth(`~/.pi/agent/auth.json` 或 API key 环境变量)
@@ -53,7 +62,7 @@ cd workbench/server && npm start
 
 ```bash
 cd workbench/server
-npx vitest run preview.test.ts   # 渲染器单元测试(无需 API key)
+npm test
 ```
 
 Pi 升级后,跑一遍确认渲染器没回归;再手动开一次工作台发条消息确认流式输出正常。
@@ -74,8 +83,8 @@ workbench/
     index.html / app.js / style.css   # 主界面
     mobile.html / mobile.js           # 手机灵感入口
     preview.html                      # 扫码预览页
-  workspace/     # 产物存放(按项目)
-pi-ext/workbench/  # Pi 扩展:save_artifact + 工作/创作模式
+  workspace/     # 产物和创作圣经存放(按项目)
+pi-ext/workbench/  # Pi 扩展:save_artifact/save_bible/read_bible + 工作/创作模式
 ```
 
 ## 还没做(后续)
@@ -83,4 +92,4 @@ pi-ext/workbench/  # Pi 扩展:save_artifact + 工作/创作模式
 - Docker 隔离(开发阶段先在 WSL 本机跑)
 - 分叉树完整可视化(当前可分叉,UI 待做)
 - 手机端完整操控(当前只读预览 + 发灵感)
-- 长篇结构化大脑(人物表/章节大纲)
+- 扩展加载链路的自动化回归测试(当前手动用 createAgentSession 验证)

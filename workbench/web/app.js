@@ -191,16 +191,21 @@ async function toggleProject(name, itemEl) {
       setState("no-project");
       document.getElementById("state-no-project").querySelector("p").textContent = "还没有会话，点「新建会话」开始";
     } else {
-      startSession(name);
+      const lastSid = localStorage.getItem("pi-last-session");
+      const resume = lastSid && sessions.find(s => s.id === lastSid);
+      if (resume) loadSessionHistory(name, resume.id);
+      else startSession(name);
     }
     saveRecent({ type: "project", name, label: name });
     localStorage.setItem("pi-last-project", name);
   } catch (err) { setState("failed", "加载失败：" + err.message); }
 }
 
-function startSession(project) {
+function startSession(project, opts = {}) {
   activeProject = project;
-  document.getElementById("stream").innerHTML = ""; curAssistant = null; sessionId = null;
+  const preserveStream = Boolean(opts.preserveStream);
+  if (!preserveStream) document.getElementById("stream").innerHTML = "";
+  curAssistant = null; sessionId = null;
   setState("creating-session");
   wsSend({ type: "create", payload: { project, mode } });
 }
@@ -220,6 +225,7 @@ function invokeSkill(project, skillName) {
 // ── 加载历史会话内容 ────────────────────────────────────────────────────────
 async function loadSessionHistory(project, id) {
   activeProject = project; sessionId = null;
+  localStorage.setItem("pi-last-session", id);
   const stream = document.getElementById("stream");
   stream.innerHTML = ""; curAssistant = null;
   setState("loading-project");
@@ -229,7 +235,7 @@ async function loadSessionHistory(project, id) {
     msgs.forEach(m => addBubble(m.role === "user" ? "user" : "assistant", m.text));
     stream.scrollTop = stream.scrollHeight;
     // 后续发消息时在这个历史会话上继续 — 新建 Pi session
-    startSession(project);
+    startSession(project, { preserveStream: true });
   } catch { setState("failed", "加载会话失败"); }
 }
 
@@ -239,7 +245,7 @@ document.getElementById("composer").addEventListener("submit", (ev) => {
   const text = document.getElementById("input").value.trim();
   if (!text) return;
   addBubble("user", text); document.getElementById("input").value = "";
-  if (!sessionId) { pendingText = text; startSession(activeProject || "未命名项目"); return; }
+  if (!sessionId) { pendingText = text; startSession(activeProject || "未命名项目", { preserveStream: true }); return; }
   wsSend({ type: "prompt", sessionId, payload: { text } }); setState("streaming");
 });
 document.getElementById("input").addEventListener("keydown", ev => {
@@ -409,4 +415,3 @@ Promise.all([_wsReady, loadProjectList()]).then(() => {
   const item = [...document.querySelectorAll(".proj-item")].find(el => el.dataset.name === last);
   if (item) item.querySelector(".proj-header").click();
 });
-
