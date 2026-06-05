@@ -172,6 +172,14 @@ body {
 }
 .preview-body { flex: 1; overflow-y: auto; padding: 1.5rem 2rem; }
 .empty-hint { color: var(--fg-dim); text-align: center; margin-top: 4rem; font-size: .9rem; }
+.preview-empty {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: .5rem;
+  padding: 2rem; color: var(--fg-dim);
+}
+.preview-empty-icon { font-size: 2rem; opacity: .4; }
+.preview-empty-title { font-size: .9rem; color: var(--fg-dim); }
+.preview-empty-sub { font-size: .78rem; color: var(--fg-dim); opacity: .6; text-align: center; max-width: 200px; line-height: 1.5; }
 .error-hint { color: var(--err); text-align: center; margin-top: 2rem; }
 
 /* 产物排版 */
