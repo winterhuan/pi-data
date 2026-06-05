@@ -161,11 +161,14 @@ export async function readSessionMessages(sessionId: string): Promise<Array<{rol
     for (const e of entries) {
       if (e.type !== "message") continue;
       const msg = (e as any).message;
-      if (!msg?.role || !msg?.content) continue;
+      if (msg?.role !== "user" && msg?.role !== "assistant") continue;
+      if (!msg?.content) continue;
       const text = Array.isArray(msg.content)
         ? msg.content.filter((c: any) => c.type === "text").map((c: any) => c.text).join("")
         : String(msg.content);
-      if (text) msgs.push({ role: msg.role, text });
+      // 跳过 skill 注入内容（<skill ...> 标签）和空文本
+      if (!text || text.trimStart().startsWith("<skill ")) continue;
+      msgs.push({ role: msg.role, text });
     }
     return msgs;
   } catch { return []; }

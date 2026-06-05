@@ -194,6 +194,7 @@ async function toggleProject(name, itemEl) {
       startSession(name);
     }
     saveRecent({ type: "project", name, label: name });
+    localStorage.setItem("pi-last-project", name);
   } catch (err) { setState("failed", "加载失败：" + err.message); }
 }
 
@@ -393,5 +394,19 @@ function toast(text) {
 
 // ── 启动 ──────────────────────────────────────────────────────────────────
 setState("no-project");
-connect();
-loadProjectList();
+
+// 等 WS 就绪 + 项目列表加载后，恢复上次打开的项目
+const _wsReady = new Promise(res => {
+  connect();
+  const _check = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) { clearInterval(_check); res(); }
+  }, 50);
+});
+
+Promise.all([_wsReady, loadProjectList()]).then(() => {
+  const last = localStorage.getItem("pi-last-project");
+  if (!last) return;
+  const item = [...document.querySelectorAll(".proj-item")].find(el => el.dataset.name === last);
+  if (item) item.querySelector(".proj-header").click();
+});
+
