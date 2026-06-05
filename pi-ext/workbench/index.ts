@@ -16,19 +16,24 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { sessionModes } from "../../workbench/server/session.ts";
 import { Type } from "typebox";
 import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { saveArtifact as wsSaveArtifact } from "../../workbench/server/workspace.ts";
 
 // workspace 根目录:环境变量优先(server 设置),否则默认仓库内 workbench/workspace
 const WORKSPACE =
   process.env.WORKBENCH_WORKSPACE ??
   join(process.cwd(), "workbench", "workspace");
 
-// 当前模式存在全局,server 创建 session 后通过 globalThis 设置
+// 当前模式从 sessionModes Map 读取,支持并发 session 各自独立模式
 type Mode = "work" | "create";
-function currentMode(): Mode {
-  return ((globalThis as any).__workbenchMode as Mode) ?? "create";
+function currentMode(sessionId?: string): Mode {
+  if (sessionId) return (sessionModes.get(sessionId) as Mode) ?? "create";
+  // fallback: 取最近设置的模式
+  const last = [...sessionModes.values()].pop();
+  return last ?? "create";
 }
 
 const WORK_PROMPT =
@@ -69,49 +74,16 @@ export default function (pi: ExtensionAPI) {
       content: Type.String({ description: "产物完整内容" }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx: ExtensionContext) {
-      const project = safeSeg(params.project);
-      const dir = join(WORKSPACE, project);
-      const ts = new Date().toISOString();
-
-      await mkdir(join(dir, "artifacts"), { recursive: true });
-      await mkdir(join(dir, "sessions"), { recursive: true });
-
-      const file = safeSeg(params.filename);
-      await writeFile(join(dir, "artifacts", file), params.content);
-
-      // meta.json
-      const metaPath = join(dir, "meta.json");
-      let meta: any;
-      try {
-        meta = JSON.parse(await readFile(metaPath, "utf-8"));
-      } catch {
-        meta = { name: project, type: params.type, created: ts };
-      }
-      meta.lastUpdated = ts;
-      meta.type = params.type;
-      await writeFile(metaPath, JSON.stringify(meta, null, 2));
-
-      // index.json(按 name 去重)
-      const indexPath = join(WORKSPACE, "index.json");
-      let index: any[];
-      try {
-        index = JSON.parse(await readFile(indexPath, "utf-8"));
-      } catch {
-        index = [];
-      }
-      const found = index.find((e) => e.name === project);
-      if (found) {
-        found.lastUpdated = ts;
-        found.type = params.type;
-      } else {
-        index.push({ id: project, name: project, type: params.type, lastUpdated: ts });
-      }
-      await mkdir(WORKSPACE, { recursive: true });
-      await writeFile(indexPath, JSON.stringify(index, null, 2));
-
+      await wsSaveArtifact({
+        project: params.project,
+        type: params.type,
+        filename: params.filename,
+        content: params.content,
+        timestamp: new Date().toISOString(),
+      });
       return {
-        content: [{ type: "text", text: `已保存到 ${project}/${file}` }],
-        details: { project, file, type: params.type },
+        content: [{ type: "text", text: `已保存到 ${params.project}/${params.filename}` }],
+        details: { project: params.project, file: params.filename, type: params.type },
       };
     },
   });
@@ -200,7 +172,8 @@ export default function (pi: ExtensionAPI) {
 
   // 按模式注入 system prompt
   pi.on("before_agent_start", async (event: any) => {
-    const extra = currentMode() === "work" ? WORK_PROMPT : CREATE_PROMPT;
+    const sessionId = event.sessionId ?? event.session?.id;
+    const extra = currentMode(sessionId) === "work" ? WORK_PROMPT : CREATE_PROMPT;
     const opts = event.systemPromptOptions;
     if (opts) {
       opts.customPrompt = opts.customPrompt ? `${opts.customPrompt}\n\n${extra}` : extra;

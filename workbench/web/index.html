@@ -8,52 +8,80 @@
 </head>
 <body>
   <header class="topbar">
+    <button id="palette-btn" class="ghost-btn" title="Cmd+K">⌘K</button>
     <span class="brand">Pi 工作台</span>
-    <div class="modes" role="tablist">
-      <button class="mode-btn active" data-mode="create" role="tab">创作</button>
-      <button class="mode-btn" data-mode="work" role="tab">工作</button>
-    </div>
-    <div class="topbar-right">
-      <span id="conn" class="conn" title="连接状态">●</span>
-      <button id="fork-btn" class="ghost-btn" title="分叉:从某个历史点开新的一条线">分叉树</button>
-      <button id="archive-btn" class="ghost-btn">档案室</button>
-    </div>
+    <span id="conn" class="conn" title="连接状态">●</span>
   </header>
 
-  <main class="layout">
-    <!-- 左:对话流 -->
-    <section class="chat" aria-label="对话">
-      <div id="stream" class="stream"></div>
-      <form id="composer" class="composer">
-        <textarea id="input" rows="2" placeholder="说点什么，或让它帮你创作…" autofocus></textarea>
-        <button type="submit" id="send">发送</button>
-      </form>
-    </section>
+  <div class="three-panel">
+    <!-- 左栏: 项目导航 -->
+    <aside class="left-panel" aria-label="项目导航">
+      <div class="left-search">
+        <input id="proj-search" type="search" placeholder="搜索项目…" autocomplete="off">
+      </div>
+      <div id="proj-list" class="proj-list"></div>
+      <button id="new-proj-btn" class="new-proj-btn">＋ 新建项目</button>
+    </aside>
 
-    <!-- 右:活页本预览 -->
-    <section class="preview" aria-label="活页本预览">
-      <div class="preview-head">
+    <!-- 中栏: 对话 + 状态机 -->
+    <main class="center-panel">
+      <div id="state-no-project" class="state-view">
+        <div class="state-icon">📂</div>
+        <p>选择左侧项目，或新建一个</p>
+      </div>
+      <div id="state-loading" class="state-view hidden">
+        <div class="spinner"></div><p>加载中…</p>
+      </div>
+      <div id="state-creating" class="state-view hidden">
+        <div class="spinner"></div><p>连接中…</p>
+      </div>
+      <div id="state-failed" class="state-view hidden">
+        <div class="state-icon">⚠</div>
+        <p id="state-failed-msg">出错了</p>
+        <button id="retry-btn" class="ghost-btn">重试</button>
+      </div>
+      <div id="state-reconnecting" class="state-view hidden">
+        <div class="spinner"></div><p id="reconnect-msg">重连中…</p>
+      </div>
+      <div id="state-active" class="state-active hidden">
+        <div id="stream" class="stream"></div>
+        <div class="mode-bar">
+          <button class="mode-btn active" data-mode="create">创作</button>
+          <button class="mode-btn" data-mode="work">工作</button>
+          <button id="fork-btn" class="ghost-btn" style="margin-left:auto">分叉树</button>
+          <span id="streaming-indicator" class="streaming-indicator hidden">思考中…</span>
+        </div>
+        <form id="composer" class="composer">
+          <textarea id="input" rows="2" placeholder="说点什么…" autocomplete="off"></textarea>
+          <button type="submit" id="send-btn">发送</button>
+        </form>
+      </div>
+    </main>
+
+    <!-- 右栏: 活页本预览 -->
+    <aside class="right-panel">
+      <div class="right-head">
         <span id="preview-title">活页本</span>
-        <button id="qr-btn" class="ghost-btn" title="生成二维码到手机看">扫码看</button>
+        <button id="qr-btn" class="ghost-btn">扫码</button>
       </div>
       <div id="preview-body" class="preview-body">
-        <p class="empty-hint">产物会在这里实时长出来 —— 小说排成书页，剧本排成剧本页。</p>
+        <p class="empty-hint">产物会在这里渲染</p>
       </div>
-    </section>
-  </main>
+    </aside>
+  </div>
 
-  <!-- 档案室抽屉 -->
-  <aside id="archive" class="archive hidden" aria-label="档案室">
-    <div class="archive-head"><span>档案室</span><button id="archive-close" class="ghost-btn">×</button></div>
-    <div id="archive-body" class="archive-body"></div>
-  </aside>
+  <!-- Command palette -->
+  <div id="palette" class="palette hidden" role="dialog" aria-modal="true">
+    <div class="palette-box">
+      <input id="palette-input" type="search" placeholder="搜索项目或会话…" autocomplete="off">
+      <div id="palette-results" class="palette-results"></div>
+    </div>
+  </div>
 
   <!-- 分叉树抽屉 -->
-  <aside id="fork" class="archive hidden" aria-label="分叉树">
-    <div class="archive-head"><span>分叉树</span><button id="fork-close" class="ghost-btn">×</button></div>
-    <div id="fork-body" class="archive-body">
-      <p class="fork-hint">点任一历史消息,从那里开一条新的线。当前所在的点用 ◀ 标出。</p>
-    </div>
+  <aside id="fork-drawer" class="drawer hidden">
+    <div class="drawer-head"><span>分叉树</span><button id="fork-close" class="ghost-btn">×</button></div>
+    <div id="fork-body" class="drawer-body"><p class="empty-hint">先对话再分叉</p></div>
   </aside>
 
   <!-- 二维码弹层 -->
@@ -65,9 +93,19 @@
     </div>
   </div>
 
-  <!-- toast 通知 -->
-  <div id="toast" class="toast hidden"></div>
+  <!-- 新建项目弹层 -->
+  <div id="new-proj-modal" class="qr-modal hidden">
+    <div class="qr-card" style="min-width:280px">
+      <h3 style="margin:0 0 1rem">新建项目</h3>
+      <input id="new-proj-name" type="text" placeholder="项目名称" class="text-input">
+      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.75rem">
+        <button id="new-proj-cancel" class="ghost-btn">取消</button>
+        <button id="new-proj-confirm" class="ghost-btn" style="border-color:var(--accent);color:var(--accent)">创建</button>
+      </div>
+    </div>
+  </div>
 
+  <div id="toast" class="toast hidden"></div>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

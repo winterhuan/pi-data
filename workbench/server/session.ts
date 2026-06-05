@@ -16,7 +16,7 @@ import { createAgentSession } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 // 让 Pi 扩展(workbench/save_artifact)写到与 server 相同的 workspace。
 // 扩展通过 process.env.WORKBENCH_WORKSPACE 读取此路径(SDK 同进程,共享 env)。
@@ -26,6 +26,10 @@ if (!process.env.WORKBENCH_WORKSPACE) {
 }
 
 export type WorkbenchMode = "work" | "create";
+
+// 问题: globalThis.__workbenchMode 在并发 session 下会互相覆盖。
+// 方案: 改用 Map<sessionId, mode>,扩展通过 import 读取。
+export const sessionModes = new Map<string, WorkbenchMode>();
 
 const PAUSE_AFTER_MS = 30_000; // 断连 30s 标记 paused
 const DESTROY_AFTER_MS = 120_000; // paused 2min 销毁
@@ -45,24 +49,30 @@ export class SessionStore {
 
   /** 创建新 session。失败时抛出,由调用方转成错误页/toast。 */
   async create(project: string, mode: WorkbenchMode): Promise<ManagedSession> {
-    // 扩展的 before_agent_start 通过 globalThis 读当前模式注入对应 system prompt
-    (globalThis as any).__workbenchMode = mode;
+    // T2: 用 project 专属子目录作为 cwd,确保目录存在
+    const projectCwd = join(
+      process.env.WORKBENCH_WORKSPACE ?? join(__dirname, "..", "workspace"),
+      project.replace(/[/\\]/g, "_").trim() || "未命名项目"
+    );
+    await import("node:fs/promises").then((fs) => fs.mkdir(projectCwd, { recursive: true }));
     const { session } = await createAgentSession({
-      cwd: process.cwd(),
+      cwd: projectCwd,
       // 默认读取 ~/.pi/agent 的 auth/models/extensions
     });
     const id = randomUUID();
+    // T1: 用 sessionModes Map 替代 globalThis,避免并发 session 互相覆盖
+    sessionModes.set(id, mode);
     const managed: ManagedSession = { id, session, project, mode, paused: false };
     this.sessions.set(id, managed);
     return managed;
   }
 
-  /** 切换模式:更新 globalThis,影响该 session 下一次 before_agent_start。 */
+  /** 切换模式:更新 sessionModes Map,影响该 session 下一次 before_agent_start。 */
   setMode(id: string, mode: WorkbenchMode): void {
     const m = this.sessions.get(id);
     if (!m) return;
     m.mode = mode;
-    (globalThis as any).__workbenchMode = mode;
+    sessionModes.set(id, mode);
   }
 
   /**
@@ -134,6 +144,7 @@ export class SessionStore {
     this.clearTimers(m);
     void m.session.abort().catch(() => {});
     this.sessions.delete(id);
+    sessionModes.delete(id);
     console.log(`[session] destroyed ${id} (idle timeout)`);
   }
 }

@@ -14,7 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import QRCode from "qrcode";
 import type { SessionStore } from "./session.ts";
-import { listProjects, listArtifacts, readArtifact } from "./workspace.ts";
+import { listProjects, listArtifacts, readArtifact, listProjectSessions, listBible, listSkills, readSessionMessages } from "./workspace.ts";
 import { renderArtifact } from "./preview.ts";
 import { lanHost } from "./lan.ts";
 
@@ -70,6 +70,22 @@ export async function handleApi(
       const target = `http://${host}${path}`;
       const dataUrl = await QRCode.toDataURL(target, { margin: 1, width: 240 });
       return json(res, 200, { target, dataUrl });
+    }
+
+    // GET /api/projects/:name/sessions|bible|skills
+    const projectRouteMatch = p.match(/^\/api\/projects\/([^/]+)\/(sessions|bible|skills)$/);
+    if (projectRouteMatch) {
+      const name = decodeURIComponent(projectRouteMatch[1]);
+      const sub = projectRouteMatch[2];
+      if (sub === "sessions") return json(res, 200, await listProjectSessions(name));
+      if (sub === "bible") return json(res, 200, await listBible(name));
+      if (sub === "skills") return json(res, 200, await listSkills(name));
+    }
+
+    // GET /api/sessions/:id/messages
+    const sessMatch = p.match(/^\/api\/sessions\/([^/]+)\/messages$/);
+    if (sessMatch) {
+      return json(res, 200, await readSessionMessages(decodeURIComponent(sessMatch[1])));
     }
 
     json(res, 404, { error: "unknown api route" });
