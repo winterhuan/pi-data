@@ -17,6 +17,9 @@
     .m-modes { display: flex; gap: .4rem; padding: .5rem .75rem; background: var(--bg2); border-bottom: 1px solid var(--border); }
     .m-mode-btn { flex: 1; padding: .4rem; font-size: .8rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--fg-dim); cursor: pointer; }
     .m-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .m-project { display: flex; gap: .4rem; padding: .5rem .75rem; background: var(--bg2); border-bottom: 1px solid var(--border); }
+    .m-project select { flex: 1; min-width: 0; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: .45rem; font: inherit; }
+    .m-project button { width: 2.4rem; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--fg); }
     .m-composer { display: flex; gap: .5rem; padding: .5rem .75rem; border-top: 1px solid var(--border); background: var(--bg2); }
     .m-composer textarea { flex: 1; min-height: 3rem; max-height: 8rem; resize: none; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: .5rem; font: inherit; }
     .m-composer button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 0 1rem; font-weight: 600; }
@@ -44,6 +47,10 @@
     <div class="m-modes">
       <button class="m-mode-btn active" data-mode="create">创作</button>
       <button class="m-mode-btn" data-mode="work">工作</button>
+    </div>
+    <div class="m-project">
+      <select id="project-select" aria-label="项目"></select>
+      <button id="project-new" type="button">＋</button>
     </div>
     <div id="stream" class="m-stream"></div>
     <form id="composer" class="m-composer">

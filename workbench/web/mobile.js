@@ -9,6 +9,7 @@ const input = $("#input");
 const conn = $("#conn");
 
 let ws = null, sessionId = null, cur = null, reconnectTimer = null;
+let activeProject = null, mode = "create", pendingText = null, projects = [];
 
 // ── WebSocket ──
 function connect() {
@@ -29,7 +30,17 @@ function sendMsg(obj) {
 }
 
 function handle(msg) {
-  if (msg.kind === "created") { sessionId = msg.sessionId; return; }
+  if (msg.kind === "created") {
+    sessionId = msg.sessionId;
+    if (msg.project) setActiveProject(msg.project, false);
+    if (msg.mode) { mode = msg.mode; updateModeButtons(); }
+    localStorage.setItem("pi-mobile-last-session", sessionId);
+    if (pendingText) {
+      const text = pendingText; pendingText = null;
+      sendMsg({ type: "prompt", sessionId, payload: { text } });
+    }
+    return;
+  }
   if (msg.kind === "error") { toast("出错: " + msg.message); cur = null; return; }
   if (msg.kind === "mode_set") return;
   if (msg.kind === "agent_event") {
@@ -40,7 +51,10 @@ function handle(msg) {
       stream.scrollTop = stream.scrollHeight;
     } else if (e.type === "tool_execution_end" && e.toolName === "save_artifact") {
       const { project, file } = e.result?.details ?? {};
-      if (project && file) { toast(`已保存 ${file}`); loadPreview(project, file); }
+      if (project && file) { toast(`已保存 ${file}`); setActiveProject(project, false); loadProjects(); loadPreview(project, file); }
+    } else if (e.type === "tool_execution_end" && e.toolName === "save_bible") {
+      const { project } = e.result?.details ?? {};
+      if (project) { setActiveProject(project, false); loadProjects(); toast("创作设定已保存"); }
     } else if (e.type === "agent_end") { cur = null; }
   }
 }
@@ -59,19 +73,81 @@ $("#composer").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  if (!activeProject) { toast("先选择或创建项目"); return; }
   addBubble("user", text);
-  sendMsg({ type: "prompt", sessionId, payload: { text } });
+  if (!sessionId) {
+    pendingText = text;
+    createSession(activeProject);
+  } else {
+    sendMsg({ type: "prompt", sessionId, payload: { text } });
+  }
   input.value = "";
 });
+
+function createSession(project, resumeSessionId) {
+  sendMsg({ type: "create", payload: { project, mode, resumeSessionId } });
+}
 
 // ── 模式切换 ──
 document.querySelectorAll(".m-mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".m-mode-btn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    sendMsg({ type: "set_mode", sessionId, payload: { mode: btn.dataset.mode } });
-    toast(btn.dataset.mode === "work" ? "工作模式" : "创作模式");
+    mode = btn.dataset.mode;
+    updateModeButtons();
+    if (sessionId) sendMsg({ type: "set_mode", sessionId, payload: { mode } });
+    toast((mode === "work" ? "工作模式" : "创作模式") + "，下次发送生效");
   });
+});
+
+function updateModeButtons() {
+  document.querySelectorAll(".m-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+}
+
+// ── 项目选择 ──
+async function loadProjects() {
+  try {
+    projects = await (await fetch("/api/projects")).json();
+  } catch {
+    projects = [];
+  }
+  renderProjectSelect();
+  const last = localStorage.getItem("pi-mobile-last-project");
+  if (!activeProject && last && projects.some((p) => p.name === last)) setActiveProject(last, false);
+}
+
+function renderProjectSelect() {
+  const sel = $("#project-select");
+  sel.innerHTML = `<option value="">选择项目</option>`;
+  for (const p of projects) {
+    const opt = document.createElement("option");
+    opt.value = p.name; opt.textContent = p.name;
+    sel.appendChild(opt);
+  }
+  sel.value = activeProject || "";
+}
+
+function setActiveProject(name, resetSession = true) {
+  activeProject = name || null;
+  if (activeProject) localStorage.setItem("pi-mobile-last-project", activeProject);
+  if (resetSession) { sessionId = null; cur = null; stream.innerHTML = ""; }
+  renderProjectSelect();
+}
+
+$("#project-select").addEventListener("change", (ev) => setActiveProject(ev.target.value || null));
+$("#project-new").addEventListener("click", async () => {
+  const name = prompt("项目名称");
+  if (!name?.trim()) return;
+  try {
+    await fetch("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), type: "create" }),
+    }).then((r) => { if (!r.ok) throw new Error("创建失败"); return r.json(); });
+    await loadProjects();
+    setActiveProject(name.trim());
+    toast("项目已创建");
+  } catch (err) {
+    toast(err.message || "创建失败");
+  }
 });
 
 // ── 标签页切换 ──
@@ -98,7 +174,7 @@ async function loadArchive() {
       const card = document.createElement("div");
       card.className = "proj-card";
       card.innerHTML = `<strong>${p.name}</strong><span class="proj-meta">${p.type} · ${p.lastUpdated.slice(0,10)}</span>`;
-      card.addEventListener("click", () => loadProject(p.name));
+      card.addEventListener("click", () => { setActiveProject(p.name); loadProject(p.name); });
       body.appendChild(card);
     }
   } catch { body.innerHTML = `<p class="error-hint">加载失败</p>`; }
@@ -148,3 +224,4 @@ function toast(t) {
 }
 
 connect();
+loadProjects();

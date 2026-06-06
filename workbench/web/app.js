@@ -64,6 +64,9 @@ function wsSend(obj) {
 function handle(msg) {
   if (msg.kind === "created") {
     sessionId = msg.sessionId;
+    if (msg.mode) { mode = msg.mode; updateModeButtons(); }
+    if (msg.project) activeProject = msg.project;
+    localStorage.setItem("pi-last-session", sessionId);
     setState("active");
     if (pendingText) { const t = pendingText; pendingText = null; wsSend({ type: "prompt", sessionId, payload: { text: t } }); setState("streaming"); }
     return;
@@ -92,7 +95,9 @@ function renderEvent(e) {
   } else if (e.type === "tool_execution_end") {
     if (e.toolName === "save_artifact" && e.result?.details) {
       const { project, file } = e.result.details;
-      loadPreview(project, file); toast(`已保存 ${file}`);
+      loadPreview(project, file); refreshArchive(project); toast(`已保存 ${file}`);
+    } else if (e.toolName === "save_bible" && e.result?.details) {
+      refreshArchive(e.result.details.project); toast("创作设定已保存");
     }
   } else if (e.type === "agent_end") {
     finishAssistant(); setState("active");
@@ -181,7 +186,8 @@ async function toggleProject(name, itemEl) {
       skSec.innerHTML = `<div class="proj-section"><span class="proj-section-label">✦ Skills</span><span class="proj-section-count">${skills.length}</span></div>`;
       skills.forEach(sk => {
         const el = document.createElement("div"); el.className = "skill-item";
-        el.innerHTML = `<span class="skill-icon">▷</span>${esc(sk.name)}`; el.title = sk.description;
+        el.innerHTML = `<span class="skill-icon">▷</span>${esc(sk.displayName || sk.name)}`; el.title = sk.description;
+        if (sk.valid === false) el.title = `${sk.description || ""}\n旧 skill 名不符合 SDK 规范，doctor 会提示修复`;
         el.addEventListener("click", () => invokeSkill(name, sk.name)); skSec.appendChild(el);
       });
       children.appendChild(skSec);
@@ -207,7 +213,7 @@ function startSession(project, opts = {}) {
   if (!preserveStream) document.getElementById("stream").innerHTML = "";
   curAssistant = null; sessionId = null;
   setState("creating-session");
-  wsSend({ type: "create", payload: { project, mode } });
+  wsSend({ type: "create", payload: { project, mode, resumeSessionId: opts.resumeSessionId } });
 }
 
 function invokeSkill(project, skillName) {
@@ -234,8 +240,8 @@ async function loadSessionHistory(project, id) {
     setState("active");
     msgs.forEach(m => addBubble(m.role === "user" ? "user" : "assistant", m.text));
     stream.scrollTop = stream.scrollHeight;
-    // 后续发消息时在这个历史会话上继续 — 新建 Pi session
-    startSession(project, { preserveStream: true });
+    // 后续发消息时在这个历史会话上继续，恢复真实 Pi session。
+    startSession(project, { preserveStream: true, resumeSessionId: id });
   } catch { setState("failed", "加载会话失败"); }
 }
 
@@ -244,8 +250,11 @@ document.getElementById("composer").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const text = document.getElementById("input").value.trim();
   if (!text) return;
+  if (!sessionId && !activeProject) { toast("请先选择或创建项目"); setState("no-project"); return; }
   addBubble("user", text); document.getElementById("input").value = "";
-  if (!sessionId) { pendingText = text; startSession(activeProject || "未命名项目", { preserveStream: true }); return; }
+  if (!sessionId) {
+    pendingText = text; startSession(activeProject, { preserveStream: true }); return;
+  }
   wsSend({ type: "prompt", sessionId, payload: { text } }); setState("streaming");
 });
 document.getElementById("input").addEventListener("keydown", ev => {
@@ -255,12 +264,14 @@ document.getElementById("input").addEventListener("keydown", ev => {
 // ── 模式切换 ──────────────────────────────────────────────────────────────
 document.querySelectorAll(".mode-btn").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active"); mode = btn.dataset.mode;
+    mode = btn.dataset.mode; updateModeButtons();
     if (sessionId) wsSend({ type: "set_mode", sessionId, payload: { mode } });
-    toast(mode === "work" ? "工作模式" : "创作模式");
+    toast((mode === "work" ? "工作模式" : "创作模式") + "，下次发送生效");
   });
 });
+function updateModeButtons() {
+  document.querySelectorAll(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+}
 
 // ── 预览 ──────────────────────────────────────────────────────────────────
 async function loadPreview(project, file) {
@@ -272,6 +283,14 @@ async function loadPreview(project, file) {
     const data = await (await fetch(`/api/preview?project=${encodeURIComponent(project)}&file=${encodeURIComponent(file)}`)).json();
     body.innerHTML = data.html || `<p class="empty-hint">空内容</p>`;
   } catch { body.innerHTML = `<p class="error-hint">预览加载失败</p>`; }
+}
+
+async function refreshArchive(project) {
+  await loadProjectList();
+  if (project) {
+    localStorage.setItem("pi-last-project", project);
+    activeProject = project;
+  }
 }
 
 // ── 二维码 ────────────────────────────────────────────────────────────────
@@ -313,15 +332,23 @@ document.getElementById("new-proj-btn").addEventListener("click", () => {
   setTimeout(() => document.getElementById("new-proj-name").focus(), 30);
 });
 document.getElementById("new-proj-cancel").addEventListener("click", () => document.getElementById("new-proj-modal").classList.add("hidden"));
-document.getElementById("new-proj-confirm").addEventListener("click", () => {
+document.getElementById("new-proj-confirm").addEventListener("click", async () => {
   const name = document.getElementById("new-proj-name").value.trim();
   if (!name) return;
   document.getElementById("new-proj-modal").classList.add("hidden");
-  allProjects.push({ id: name, name, type: "create", lastUpdated: new Date().toISOString() });
-  renderProjectList(allProjects);
-  const items = document.querySelectorAll(".proj-item");
-  for (const item of items) { if (item.dataset.name === name) { item.querySelector(".proj-header").click(); break; } }
-  toast(`项目「${name}」已创建`);
+  try {
+    await fetch("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, type: "create" }),
+    }).then(r => { if (!r.ok) throw new Error("创建失败"); return r.json(); });
+    await loadProjectList();
+    const items = document.querySelectorAll(".proj-item");
+    for (const item of items) { if (item.dataset.name === name) { item.querySelector(".proj-header").click(); break; } }
+    toast(`项目「${name}」已创建`);
+  } catch (err) {
+    toast(err.message || "创建失败");
+  }
 });
 document.getElementById("new-proj-name").addEventListener("keydown", ev => {
   if (ev.key === "Enter") document.getElementById("new-proj-confirm").click();
