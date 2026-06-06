@@ -39,16 +39,15 @@ server 和扩展共享两类轻量状态:
 ## 安装与启动
 
 ```bash
-# 1. 安装 server 依赖(隔离,不污染全局 Pi)
-cd workbench/server && npm install
-
-# 2. 把工作台扩展 symlink 到 Pi 扩展目录(让 save_artifact / 模式切换生效)
-ln -sfn "$(git rev-parse --show-toplevel)/pi-ext/workbench" ~/.pi/agent/extensions/workbench
-
-# 3. 启动
-cd workbench/server && npm start
+cd workbench/server
+npm install
+npm run setup
+npm run start:checked
 # 浏览器打开 http://localhost:7777
 ```
+
+`npm run setup` 会幂等安装 Pi 扩展 symlink 并检查 Node、Pi SDK、依赖、auth/model、workspace 等基础条件。
+`npm run doctor` 只做诊断,不修改文件；旧项目里的中文 skill 名会作为 warning 报告,不会自动删除或迁移。
 
 ## 手机访问
 
@@ -63,9 +62,11 @@ cd workbench/server && npm start
 ```bash
 cd workbench/server
 npm test
+npm run smoke:pi
 ```
 
-Pi 升级后,跑一遍确认渲染器没回归;再手动开一次工作台发条消息确认流式输出正常。
+`npm test` 不消耗模型。`npm run smoke:pi` 默认跳过真实 Pi 调用；需要真实端到端验收时执行
+`WORKBENCH_REAL_PI_SMOKE=1 npm run smoke:pi`。
 
 ## 目录结构
 

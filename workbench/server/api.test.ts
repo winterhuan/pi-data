@@ -56,14 +56,26 @@ describe("api route helpers", () => {
 
   it("listSkills parses SKILL.md frontmatter correctly", async () => {
     const proj = "skills-proj";
+    const skillDir = join(tmpDir, proj, ".pi", "skills", "write-scene");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"),
+      "---\nname: write-scene\ndisplayName: 写场景\ndescription: '专注场景写作'\nallowed-tools: [read]\n---\n# 写场景\n内容。");
+    const skills = await ws.listSkills(proj);
+    expect(skills.length).toBe(1);
+    expect(skills[0].name).toBe("write-scene");
+    expect(skills[0].displayName).toBe("写场景");
+    expect(skills[0].description).toBe("专注场景写作");
+    expect(skills[0].valid).toBe(true);
+  });
+
+  it("listSkills reports old Chinese skill names as invalid but keeps displayable data", async () => {
+    const proj = "legacy-skills-proj";
     const skillDir = join(tmpDir, proj, ".pi", "skills", "写场景");
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"),
-      "---\nname: 写场景\ndescription: '专注场景写作'\nallowed-tools: [read]\n---\n# 写场景\n内容。");
+      "---\nname: 写场景\ndescription: '专注场景写作'\n---\n内容。");
     const skills = await ws.listSkills(proj);
-    expect(skills.length).toBe(1);
-    expect(skills[0].name).toBe("写场景");
-    expect(skills[0].description).toBe("专注场景写作");
+    expect(skills[0]).toMatchObject({ name: "写场景", displayName: "写场景", valid: false });
   });
 
   it("listSkills skips malformed SKILL.md without crashing", async () => {
@@ -77,13 +89,22 @@ describe("api route helpers", () => {
 
   it("listSkills returns multiple skills sorted by directory name", async () => {
     const proj = "multi-skills";
-    for (const name of ["A技能", "B技能"]) {
+    for (const name of ["a-skill", "b-skill"]) {
       const d = join(tmpDir, proj, ".pi", "skills", name);
       await mkdir(d, { recursive: true });
       await writeFile(join(d, "SKILL.md"), `---\nname: ${name}\ndescription: '${name} desc'\n---\n`);
     }
     const skills = await ws.listSkills(proj);
     expect(skills.length).toBe(2);
+  });
+
+  it("createProject copies valid slug skill templates", async () => {
+    const entry = await ws.createProject("template-proj");
+    expect(entry.name).toBe("template-proj");
+    const skills = await ws.listSkills("template-proj");
+    expect(skills.length).toBeGreaterThan(0);
+    expect(skills.some((s) => s.name === "write-scene" && s.displayName === "写场景")).toBe(true);
+    expect(skills.every((s) => s.valid)).toBe(true);
   });
 
   // ── listProjectSessions ────────────────────────────────────────────────

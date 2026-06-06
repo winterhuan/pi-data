@@ -14,26 +14,62 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import QRCode from "qrcode";
 import type { SessionStore } from "./session.ts";
-import { listProjects, listArtifacts, readArtifact, listProjectSessions, listBible, listSkills, readSessionMessages } from "./workspace.ts";
+import {
+  createProject,
+  listArtifacts,
+  listBible,
+  listProjectSessions,
+  listProjects,
+  listSkills,
+  readArtifact,
+  readSessionMessages,
+} from "./workspace.ts";
 import { renderArtifact } from "./preview.ts";
 import { lanHost } from "./lan.ts";
+import { checkWorkbench } from "./diagnostics.ts";
 
 function json(res: ServerResponse, code: number, body: unknown): void {
   res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
 }
 
+async function readJson(req: IncomingMessage): Promise<any> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  if (!chunks.length) return {};
+  return JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+}
+
 export async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
-  _store: SessionStore,
+  store: SessionStore,
 ): Promise<void> {
   try {
     const p = url.pathname;
 
-    if (p === "/api/projects") {
+    if (p === "/api/health" && req.method === "GET") {
+      const health = await checkWorkbench({ skipPort: true });
+      return json(res, health.ok ? 200 : 503, {
+        ...health,
+        activeSessions: store.list().map((s) => ({
+          id: s.id,
+          project: s.project,
+          mode: s.mode,
+          paused: s.paused,
+        })),
+      });
+    }
+
+    if (p === "/api/projects" && req.method === "GET") {
       return json(res, 200, await listProjects());
+    }
+
+    if (p === "/api/projects" && req.method === "POST") {
+      const body = await readJson(req);
+      const entry = await createProject(String(body?.name ?? ""), String(body?.type ?? "create"));
+      return json(res, 201, entry);
     }
 
     if (p.startsWith("/api/project/")) {

@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "node --import tsx index.ts",
     "start": "node --import tsx index.ts",
+    "setup": "node --import tsx scripts/setup.ts",
+    "doctor": "node --import tsx scripts/doctor.ts",
+    "start:checked": "npm run doctor && npm start",
+    "smoke:pi": "node --import tsx scripts/smoke-pi.ts",
     "test": "vitest run"
   },
   "dependencies": {
