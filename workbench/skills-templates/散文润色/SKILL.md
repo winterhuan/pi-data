@@ -1,5 +1,6 @@
 ---
-name: 散文润色
+name: polish-prose
+displayName: 散文润色
 description: '在用户风格基础上打磨节奏和意象，不改变内容方向。'
 allowed-tools: [read, write]
 ---

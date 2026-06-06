@@ -1,5 +1,6 @@
 ---
-name: 剧本格式
+name: format-screenplay
+displayName: 剧本格式
 description: '按 Fountain 规范生成标准剧本格式。写完场景或对话后自动激活。'
 allowed-tools: [read, write]
 ---

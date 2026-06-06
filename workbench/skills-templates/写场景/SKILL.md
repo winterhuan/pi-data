@@ -1,5 +1,6 @@
 ---
-name: 写场景
+name: write-scene
+displayName: 写场景
 description: '专注于单个场景的写作:环境、动作、张力。当用户要写场景时自动激活。'
 allowed-tools: [read, write]
 ---

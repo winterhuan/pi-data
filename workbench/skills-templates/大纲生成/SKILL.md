@@ -1,5 +1,6 @@
 ---
-name: 大纲生成
+name: generate-outline
+displayName: 大纲生成
 description: '从一句话主题展开三幕结构大纲。'
 allowed-tools: [read, write]
 ---

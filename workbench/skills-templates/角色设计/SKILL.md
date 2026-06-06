@@ -1,5 +1,6 @@
 ---
-name: 角色设计
+name: design-character
+displayName: 角色设计
 description: '引导用户建立立体人物:外形/背景/核心矛盾/行为模式。'
 allowed-tools: [read, write]
 ---

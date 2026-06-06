@@ -1,5 +1,6 @@
 ---
-name: 对话打磨
+name: polish-dialogue
+displayName: 对话打磨
 description: '优化已有对话：语气、信息密度、潜台词。用户粘贴对话后自动激活。'
 allowed-tools: [read, write]
 ---
