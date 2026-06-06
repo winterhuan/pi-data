@@ -12,12 +12,11 @@
  *     已把消息持久化到 ~/.pi/agent/sessions,历史可回溯,但活跃运行态不保留)
  */
 
-import { createAgentSession } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
-import { createProject } from "./workspace.ts";
+import { dirname, join } from "node:path";
+import { createProject, findSessionPath, normalizeProjectName, projectDir } from "./workspace.ts";
 
 // 让 Pi 扩展(workbench/save_artifact)写到与 server 相同的 workspace。
 // 扩展通过 process.env.WORKBENCH_WORKSPACE 读取此路径(SDK 同进程,共享 env)。
@@ -56,24 +55,43 @@ export interface ManagedSession {
 export class SessionStore {
   private sessions = new Map<string, ManagedSession>();
 
-  /** 创建新 session。失败时抛出,由调用方转成错误页/toast。 */
-  async create(project: string, mode: WorkbenchMode): Promise<ManagedSession> {
-    await createProject(project);
-    // T2: 用 project 专属子目录作为 cwd,确保目录存在
-    const projectCwd = join(
-      process.env.WORKBENCH_WORKSPACE ?? join(__dirname, "..", "workspace"),
-      project.replace(/[/\\]/g, "_").trim() || "未命名项目"
-    );
-    await import("node:fs/promises").then((fs) => fs.mkdir(projectCwd, { recursive: true }));
+  /** 创建或恢复 session。失败时抛出,由调用方转成错误页/toast。 */
+  async create(project: string, mode: WorkbenchMode, resumeSessionId?: string): Promise<ManagedSession> {
+    const projectName = normalizeProjectName(project);
+    await createProject(projectName);
+    const projectCwd = projectDir(projectName);
+
+    if (resumeSessionId) {
+      const existing = this.sessions.get(resumeSessionId);
+      if (existing) {
+        existing.project = projectName;
+        existing.mode = mode;
+        existing.paused = false;
+        sessionModes.set(existing.id, mode);
+        return existing;
+      }
+    }
+
+    const sessionManager = resumeSessionId
+      ? SessionManager.open(await this.requireSessionPath(resumeSessionId), undefined, projectCwd)
+      : SessionManager.create(projectCwd);
+
     const { session } = await createAgentSession({
       cwd: projectCwd,
+      sessionManager,
       // 默认读取 ~/.pi/agent 的 auth/models/extensions
     });
-    const id = randomUUID();
+    const id = session.sessionId;
     sessionModes.set(id, mode);
-    const managed: ManagedSession = { id, session, project, mode, paused: false };
+    const managed: ManagedSession = { id, session, project: projectName, mode, paused: false };
     this.sessions.set(id, managed);
     return managed;
+  }
+
+  private async requireSessionPath(sessionId: string): Promise<string> {
+    const path = await findSessionPath(sessionId);
+    if (!path) throw new Error(`session not found: ${sessionId}`);
+    return path;
   }
 
   /** 切换模式:更新 sessionModes Map,影响该 session 下一次 before_agent_start。 */

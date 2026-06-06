@@ -18,33 +18,14 @@ describe("workspace", () => {
 
   beforeAll(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "ws-test-"));
-    // workspace.ts reads __dirname at module load; we patch the module to use tmpDir
-    // by mocking the internal WORKSPACE via vi.mock path substitution.
-    // Since WORKSPACE = join(__dirname, "..", "workspace"), we mock the entire module
-    // with a factory that re-exports everything but with tmpDir as root.
     vi.resetModules();
-    vi.doMock("./workspace.ts", async (importOriginal) => {
-      const original = await importOriginal<typeof import("./workspace.ts")>();
-      // We can't easily swap WORKSPACE in the original; instead re-implement
-      // the module using our tmpDir. But the cleanest approach: just use the
-      // real module but point __dirname via a stub.
-      // Actually: since workspace.ts uses fileURLToPath(import.meta.url),
-      // we cannot intercept that. Use the real functions but with a separate
-      // tmpDir-based workspace by reimporting with module state reset.
-      return original;
-    });
-    vi.resetModules();
-    vi.doUnmock("./workspace.ts");
-    // The real fix: workspace.ts derives WORKSPACE from __dirname which points to
-    // the actual server/ dir. We must use vi.mock with a factory that overrides
-    // the internal constant. Since it's not exported, we instead test against
-    // the real workspace dir but with unique project names + cleanup.
-    // This is safe: we never pollute real projects because names are uuid-like.
+    process.env.WORKBENCH_WORKSPACE = tmpDir;
     ws = await import("./workspace.ts");
   });
 
   afterAll(async () => {
     await rm(tmpDir, { recursive: true, force: true });
+    delete process.env.WORKBENCH_WORKSPACE;
     vi.resetModules();
   });
 

@@ -27,7 +27,9 @@ function fallback(content: string): string {
 }
 
 function renderMarkdown(content: string): string {
-  return `<article class="artifact-prose">${marked.parse(content, { async: false }) as string}</article>`;
+  const renderer = new marked.Renderer();
+  renderer.html = ({ text }) => escapeHtml(text);
+  return `<article class="artifact-prose">${marked.parse(content, { async: false, renderer }) as string}</article>`;
 }
 
 function renderFountain(content: string): string {

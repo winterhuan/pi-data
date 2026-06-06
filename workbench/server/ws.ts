@@ -22,7 +22,13 @@ import type { SessionStore, WorkbenchMode } from "./session.ts";
 interface InboundMsg {
   sessionId?: string;
   type: "create" | "prompt" | "set_mode" | "fork_points" | "fork";
-  payload?: any;
+  payload?: {
+    project?: string;
+    mode?: WorkbenchMode;
+    resumeSessionId?: string;
+    text?: string;
+    entryId?: string;
+  } & Record<string, unknown>;
 }
 
 export function attachWebSocket(server: Server, store: SessionStore): void {
@@ -63,19 +69,19 @@ export function attachWebSocket(server: Server, store: SessionStore): void {
         if (msg.type === "create") {
           const project = String(msg.payload?.project ?? "未命名项目");
           const mode = (msg.payload?.mode ?? "create") as WorkbenchMode;
-          const m = await store.create(project, mode);
+          const resumeSessionId = msg.payload?.resumeSessionId ? String(msg.payload.resumeSessionId) : undefined;
+          const m = await store.create(project, mode, resumeSessionId);
           bind(m.id);
-          send({ kind: "created", sessionId: m.id, project, mode });
+          send({ kind: "created", sessionId: m.id, project: m.project, mode: m.mode, resumed: Boolean(resumeSessionId) });
           return;
         }
 
         if (msg.type === "prompt") {
-          // 路由到指定 session;无则自动创建(手机灵感入口)
+          // 路由到指定 session;无 session 时要求客户端先选项目并 create。
           let id = msg.sessionId ?? boundId;
           if (!id || !store.get(id)) {
-            const m = await store.create("未命名项目", "create");
-            id = m.id;
-            send({ kind: "created", sessionId: id, project: m.project, mode: m.mode });
+            send({ kind: "error", message: "请先选择项目并创建会话" });
+            return;
           }
           if (id !== boundId) bind(id);
           const m = store.get(id)!;
@@ -90,7 +96,7 @@ export function attachWebSocket(server: Server, store: SessionStore): void {
           const id = msg.sessionId ?? boundId;
           if (id) store.setMode(id, (msg.payload?.mode ?? "create") as WorkbenchMode);
           const m = id ? store.get(id) : undefined;
-          send({ kind: "mode_set", sessionId: m?.id, mode: m?.mode });
+          send({ kind: "mode_set", sessionId: m?.id, mode: m?.mode, applies: "next_turn" });
           return;
         }
 

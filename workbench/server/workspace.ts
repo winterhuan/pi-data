@@ -14,21 +14,34 @@
  * save_artifact 写文件时调用 saveArtifact() 更新 meta + index。
  */
 
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
-import { SessionManager, parseSessionEntries } from "@earendil-works/pi-coding-agent";
+import { access, cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  loadSkillsFromDir,
+  parseSessionEntries,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_WORKSPACE = join(__dirname, "..", "workspace");
+export const DEFAULT_WORKSPACE = join(__dirname, "..", "workspace");
 // 读取时优先使用环境变量(测试/Docker 可覆盖)
-function getWorkspace(): string { return process.env.WORKBENCH_WORKSPACE ?? DEFAULT_WORKSPACE; }
+export function getWorkspace(): string {
+  return process.env.WORKBENCH_WORKSPACE ?? DEFAULT_WORKSPACE;
+}
 
 export interface ProjectEntry {
   id: string;
   name: string;
   type: string;
   lastUpdated: string;
+}
+
+export interface ProjectSkill {
+  name: string;
+  displayName: string;
+  description: string;
+  valid: boolean;
 }
 
 // 保护 index.json 的异步写锁:防止并发 saveArtifact 调用损坏索引
@@ -54,13 +67,39 @@ async function writeIndex(entries: ProjectEntry[]): Promise<void> {
   await writeFile(join(getWorkspace(), "index.json"), JSON.stringify(entries, null, 2));
 }
 
-function safeSeg(s: string): string {
-  return s.replace(/\.\./g, "_").replace(/[/\\]/g, "_").trim() || "未命名项目";
+export function normalizeProjectName(input: string): string {
+  const name = input.trim();
+  if (!name) throw new Error("project name is required");
+  if (name.includes("..") || /[/\\]/.test(name)) {
+    throw new Error("invalid project name");
+  }
+  return name;
 }
 
-function projectDir(name: string): string {
-  const dir = join(getWorkspace(), safeSeg(name));
-  if (!resolve(dir).startsWith(resolve(getWorkspace()) + "/") && resolve(dir) !== resolve(getWorkspace())) {
+export function normalizeFileName(input: string): string {
+  const name = input.trim();
+  if (!name) throw new Error("filename is required");
+  if (name.includes("..") || /[/\\]/.test(name)) {
+    throw new Error("invalid filename");
+  }
+  return name;
+}
+
+export function isValidSkillName(name: string): boolean {
+  return (
+    /^[a-z0-9-]+$/.test(name) &&
+    !name.startsWith("-") &&
+    !name.endsWith("-") &&
+    !name.includes("--") &&
+    name.length <= 64
+  );
+}
+
+export function projectDir(name: string): string {
+  const dir = join(getWorkspace(), normalizeProjectName(name));
+  const workspaceRoot = resolve(getWorkspace());
+  const resolved = resolve(dir);
+  if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + "/")) {
     throw new Error("invalid project name");
   }
   return dir;
@@ -79,7 +118,7 @@ export async function listArtifacts(project: string): Promise<string[]> {
 }
 
 export async function readArtifact(project: string, file: string): Promise<string> {
-  const safeFile = safeSeg(file);
+  const safeFile = normalizeFileName(file);
   const filePath = join(projectDir(project), "artifacts", safeFile);
   // Enforce root-prefix for file too
   if (!resolve(filePath).startsWith(resolve(getWorkspace()))) throw new Error("invalid file path");
@@ -97,12 +136,13 @@ export async function saveArtifact(opts: {
   content: string;
   timestamp: string;
 }): Promise<{ path: string }> {
+  const project = normalizeProjectName(opts.project);
+  const filename = normalizeFileName(opts.filename);
   const dir = projectDir(opts.project);
   await mkdir(join(dir, "artifacts"), { recursive: true });
   await mkdir(join(dir, "sessions"), { recursive: true });
 
-  const safeFile = opts.filename.replace(/[/\\]/g, "_");
-  const artifactPath = join(dir, "artifacts", safeFile);
+  const artifactPath = join(dir, "artifacts", filename);
   await writeFile(artifactPath, opts.content);
 
   // 更新 meta.json
@@ -111,8 +151,9 @@ export async function saveArtifact(opts: {
   try {
     meta = JSON.parse(await readFile(metaPath, "utf-8"));
   } catch {
-    meta = { name: opts.project, type: opts.type, created: opts.timestamp };
+    meta = { name: project, type: opts.type, created: opts.timestamp };
   }
+  meta.name = project;
   meta.lastUpdated = opts.timestamp;
   meta.type = opts.type;
   await writeFile(metaPath, JSON.stringify(meta, null, 2));
@@ -120,12 +161,12 @@ export async function saveArtifact(opts: {
   // 更新 index.json(按 name 去重)
   await withIndexLock(async () => {
     const index = await readIndex();
-    const existing = index.find((e) => e.name === opts.project);
+    const existing = index.find((e) => e.name === project);
     if (existing) {
       existing.lastUpdated = opts.timestamp;
       existing.type = opts.type;
     } else {
-      index.push({ id: opts.project, name: opts.project, type: opts.type, lastUpdated: opts.timestamp });
+      index.push({ id: project, name: project, type: opts.type, lastUpdated: opts.timestamp });
     }
     await writeIndex(index);
   });
@@ -174,6 +215,12 @@ export async function readSessionMessages(sessionId: string): Promise<Array<{rol
   } catch { return []; }
 }
 
+export async function findSessionPath(sessionId: string): Promise<string | null> {
+  const all = await SessionManager.listAll();
+  const info = all.find((s) => s.id === sessionId);
+  return info?.path ?? null;
+}
+
 export async function listBible(project: string): Promise<Array<{kind: string, name: string, content: string}>> {
   const kinds = ["character", "outline", "worldbuilding", "foreshadowing"] as const;
   const entries: Array<{kind: string, name: string, content: string}> = [];
@@ -190,22 +237,60 @@ export async function listBible(project: string): Promise<Array<{kind: string, n
   return entries;
 }
 
-export async function listSkills(project: string): Promise<Array<{name: string, description: string}>> {
+function frontmatterValue(frontmatter: string, key: string): string | undefined {
+  const re = new RegExp(`^${key}:\\s*['"]?(.+?)['"]?$`, "m");
+  return frontmatter.match(re)?.[1]?.trim();
+}
+
+export async function listSkills(project: string): Promise<ProjectSkill[]> {
   const skillsDir = join(projectDir(project), ".pi", "skills");
   let dirs: string[];
   try { dirs = await readdir(skillsDir); } catch { return []; }
-  const skills: Array<{name: string, description: string}> = [];
-  for (const d of dirs) {
+  const skills: ProjectSkill[] = [];
+  for (const d of dirs.sort()) {
     try {
       const md = await readFile(join(skillsDir, d, "SKILL.md"), "utf-8");
       const m = md.match(/^---\n([\s\S]*?)\n---/);
       if (!m) continue;
-      const nameM = m[1].match(/^name:\s*(.+)$/m);
-      const descM = m[1].match(/^description:\s*['"]?(.+?)['"]?$/m);
-      if (nameM) skills.push({ name: nameM[1].trim(), description: descM?.[1].trim() ?? "" });
+      const name = frontmatterValue(m[1], "name") ?? d;
+      const displayName = frontmatterValue(m[1], "displayName") ?? name;
+      const description = frontmatterValue(m[1], "description") ?? "";
+      skills.push({ name, displayName, description, valid: isValidSkillName(name) });
     } catch { /* skip malformed */ }
   }
   return skills;
+}
+
+async function readSkillTemplateName(templatePath: string, fallback: string): Promise<string> {
+  try {
+    const md = await readFile(join(templatePath, "SKILL.md"), "utf-8");
+    const m = md.match(/^---\n([\s\S]*?)\n---/);
+    const name = m ? frontmatterValue(m[1], "name") : undefined;
+    return name && isValidSkillName(name) ? name : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function copySkillTemplates(skillsDest: string): Promise<void> {
+  const templatesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "skills-templates");
+  let entries: string[];
+  try {
+    entries = await readdir(templatesDir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const src = join(templatesDir, entry);
+    const slug = await readSkillTemplateName(src, entry);
+    const dest = join(skillsDest, slug);
+    try {
+      await access(join(dest, "SKILL.md"));
+      continue;
+    } catch {
+      await cp(src, dest, { recursive: true });
+    }
+  }
 }
 
 /**
@@ -213,8 +298,9 @@ export async function listSkills(project: string): Promise<Array<{name: string, 
  * 新建项目时调用,把 workbench/skills-templates/ 下的全部 skill 目录
  * 复制到 workspace/{project}/.pi/skills/,让 Pi 自动发现并加载。
  */
-export async function createProject(name: string): Promise<void> {
-  const dir = projectDir(name);
+export async function createProject(name: string, type = "create"): Promise<ProjectEntry> {
+  const project = normalizeProjectName(name);
+  const dir = projectDir(project);
   await mkdir(join(dir, "artifacts"), { recursive: true });
   await mkdir(join(dir, "sessions"), { recursive: true });
   const now = new Date().toISOString();
@@ -224,30 +310,35 @@ export async function createProject(name: string): Promise<void> {
   try {
     meta = JSON.parse(await readFile(metaPath, "utf-8"));
   } catch {
-    meta = { name, type: "create", created: now };
+    meta = { name: project, type, created: now };
   }
-  meta.name = name;
-  meta.type = meta.type ?? "create";
+  meta.name = project;
+  meta.type = type || meta.type || "create";
   meta.lastUpdated = meta.lastUpdated ?? now;
   await writeFile(metaPath, JSON.stringify(meta, null, 2));
 
+  const entry = { id: project, name: project, type: meta.type, lastUpdated: meta.lastUpdated };
+
   await withIndexLock(async () => {
     const index = await readIndex();
-    const existing = index.find((e) => e.name === name);
+    const existing = index.find((e) => e.name === project);
     if (!existing) {
-      index.push({ id: name, name, type: meta.type, lastUpdated: meta.lastUpdated });
-      await writeIndex(index);
+      index.push(entry);
+    } else {
+      existing.type = meta.type;
+      existing.lastUpdated = meta.lastUpdated;
     }
+    await writeIndex(index);
   });
 
   const skillsDest = join(dir, ".pi", "skills");
   await mkdir(skillsDest, { recursive: true });
-  const templatesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "skills-templates");
-  try {
-    const { cp } = await import("node:fs/promises");
-    const entries = await readdir(templatesDir);
-    for (const entry of entries) {
-      await cp(join(templatesDir, entry), join(skillsDest, entry), { recursive: true });
-    }
-  } catch { /* templates dir may not exist yet */ }
+  await copySkillTemplates(skillsDest);
+
+  return entry;
+}
+
+export async function loadProjectSkillDiagnostics(project: string) {
+  const cwd = projectDir(project);
+  return loadSkillsFromDir({ dir: join(cwd, ".pi", "skills"), source: "project" }).diagnostics;
 }

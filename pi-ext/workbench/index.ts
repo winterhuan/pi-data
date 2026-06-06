@@ -16,9 +16,20 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+
+const Type = {
+  String: (options: Record<string, unknown> = {}) => ({ type: "string", ...options }),
+  Literal: (value: string) => ({ const: value }),
+  Union: (schemas: unknown[]) => ({ anyOf: schemas }),
+  Object: (properties: Record<string, unknown>) => ({
+    type: "object",
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  }),
+};
 
 // workspace 根目录:环境变量优先(server 设置),否则默认仓库内 workbench/workspace
 const WORKSPACE =
@@ -120,7 +131,12 @@ const CREATE_PROMPT =
   "保持前后一致;新增设定用 save_bible 存档,确保埋下的伏笔后续能收回。";
 
 function safeSeg(s: string): string {
-  return s.replace(/\.\./g, "_").replace(/[/\\]/g, "_").trim() || "未命名";
+  const value = s.trim();
+  if (!value) throw new Error("name is required");
+  if (value.includes("..") || /[/\\]/.test(value)) {
+    throw new Error("invalid workspace name");
+  }
+  return value;
 }
 
 function workspacePath(...segs: string[]): string {
@@ -251,12 +267,9 @@ export default function (pi: ExtensionAPI) {
   });
 
   // 按模式注入 system prompt
-  pi.on("before_agent_start", async (event: any) => {
-    const sessionId = event.sessionId ?? event.session?.id;
+  pi.on("before_agent_start", async (event: any, ctx: ExtensionContext) => {
+    const sessionId = ctx.sessionManager.getSessionId();
     const extra = currentMode(sessionId) === "work" ? WORK_PROMPT : CREATE_PROMPT;
-    const opts = event.systemPromptOptions;
-    if (opts) {
-      opts.customPrompt = opts.customPrompt ? `${opts.customPrompt}\n\n${extra}` : extra;
-    }
+    return { systemPrompt: `${event.systemPrompt}\n\n${extra}` };
   });
 }

@@ -41,6 +41,12 @@ describe("renderArtifact", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
+  it("escapes raw html in markdown preview", () => {
+    const html = renderArtifact("x.md", "# Hi\n\n<script>alert(1)</script>");
+    expect(html).not.toContain("<script>alert");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
   it("escapes html in csv cells", () => {
     const html = renderArtifact("x.csv", "a,b\n<b>x</b>,y");
     expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
