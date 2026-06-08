@@ -13,10 +13,10 @@
  */
 
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, SessionEntry, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createProject, findSessionPath, normalizeProjectName, projectDir } from "./workspace.ts";
+import { createProject, findSessionPath, normalizeProjectName, projectDir, recordProjectSession } from "./workspace.ts";
 
 // 让 Pi 扩展(workbench/save_artifact)写到与 server 相同的 workspace。
 // 扩展通过 process.env.WORKBENCH_WORKSPACE 读取此路径(SDK 同进程,共享 env)。
@@ -52,6 +52,140 @@ export interface ManagedSession {
   destroyTimer?: NodeJS.Timeout;
 }
 
+export interface ForkPoint {
+  entryId: string;
+  text: string;
+}
+
+export interface ForkTreeRow {
+  id: string;
+  parentId: string | null;
+  depth: number;
+  kind: string;
+  role: string;
+  text: string;
+  label?: string;
+  branchable: boolean;
+  current: boolean;
+  onCurrentPath: boolean;
+  childCount: number;
+}
+
+export interface ForkTreeState {
+  points: ForkPoint[];
+  rows: ForkTreeRow[];
+  leafId: string | null;
+  currentPathIds: string[];
+  totalEntries: number;
+  branchableCount: number;
+}
+
+function textFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part: any) => part?.type === "text")
+      .map((part: any) => String(part.text ?? ""))
+      .join("");
+  }
+  return "";
+}
+
+function shortText(text: string, max = 180): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > max ? `${compact.slice(0, max - 1)}…` : compact;
+}
+
+function displayEntry(entry: SessionEntry, fallbackText?: string): { kind: string; role: string; text: string } | null {
+  if (entry.type === "message") {
+    const msg = (entry as any).message;
+    const role = String(msg?.role ?? "message");
+    const text = shortText(fallbackText ?? textFromContent(msg?.content));
+    if (!text) return null;
+    return { kind: role === "user" || role === "assistant" ? role : "message", role, text };
+  }
+  if (entry.type === "custom_message") {
+    const text = shortText(textFromContent((entry as any).content));
+    if (!text) return null;
+    return { kind: "custom", role: "custom", text };
+  }
+  if (entry.type === "branch_summary") {
+    const text = shortText((entry as any).summary ?? "");
+    if (!text) return null;
+    return { kind: "summary", role: "summary", text };
+  }
+  if (entry.type === "compaction") {
+    const text = shortText((entry as any).summary ?? "");
+    if (!text) return null;
+    return { kind: "compaction", role: "summary", text: `上下文压缩: ${text}` };
+  }
+  return null;
+}
+
+function fallbackForkRows(points: ForkPoint[], leafId: string | null): ForkTreeRow[] {
+  return points.map((point, index) => ({
+    id: point.entryId,
+    parentId: index > 0 ? points[index - 1].entryId : null,
+    depth: index,
+    kind: "user",
+    role: "user",
+    text: shortText(point.text),
+    branchable: true,
+    current: point.entryId === leafId,
+    onCurrentPath: point.entryId === leafId,
+    childCount: 0,
+  }));
+}
+
+function flattenForkTree(
+  roots: SessionTreeNode[],
+  points: ForkPoint[],
+  leafId: string | null,
+  currentPathIds: Set<string>,
+): ForkTreeRow[] {
+  const branchableById = new Map(points.map((p) => [p.entryId, p.text]));
+  const rows: ForkTreeRow[] = [];
+  const stack = roots
+    .slice()
+    .reverse()
+    .map((node) => ({ node, depth: 0 }));
+
+  while (stack.length) {
+    const { node, depth } = stack.pop()!;
+    const branchableText = branchableById.get(node.entry.id);
+    const display = displayEntry(node.entry, branchableText);
+    if (display) {
+      rows.push({
+        id: node.entry.id,
+        parentId: node.entry.parentId,
+        depth,
+        kind: display.kind,
+        role: display.role,
+        text: display.text,
+        label: node.label,
+        branchable: branchableById.has(node.entry.id),
+        current: node.entry.id === leafId,
+        onCurrentPath: currentPathIds.has(node.entry.id),
+        childCount: node.children.length,
+      });
+    }
+    for (let i = node.children.length - 1; i >= 0; i--) {
+      stack.push({ node: node.children[i], depth: depth + 1 });
+    }
+  }
+
+  if (leafId && !rows.some((row) => row.current)) {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].onCurrentPath) {
+        rows[i].current = true;
+        break;
+      }
+    }
+  }
+
+  return rows.length ? rows : fallbackForkRows(points, leafId);
+}
+
 export class SessionStore {
   private sessions = new Map<string, ManagedSession>();
 
@@ -83,6 +217,7 @@ export class SessionStore {
     });
     const id = session.sessionId;
     sessionModes.set(id, mode);
+    await recordProjectSession(projectName, id);
     const managed: ManagedSession = { id, session, project: projectName, mode, paused: false };
     this.sessions.set(id, managed);
     return managed;
@@ -106,12 +241,31 @@ export class SessionStore {
    * 分叉树数据:返回可分叉的用户消息点 + 当前 leaf 位置。
    * Pi 的会话树是单文件内 entry 树,每个用户消息是一个可回溯的分叉点。
    */
-  forkPoints(id: string): { points: Array<{ entryId: string; text: string }>; leafId: string | null } {
+  forkPoints(id: string): ForkTreeState {
     const m = this.sessions.get(id);
-    if (!m) return { points: [], leafId: null };
+    if (!m) return { points: [], rows: [], leafId: null, currentPathIds: [], totalEntries: 0, branchableCount: 0 };
     const points = m.session.getUserMessagesForForking?.() ?? [];
     const leafId = m.session.sessionManager?.getLeafId?.() ?? null;
-    return { points, leafId };
+    const currentPathIds = new Set<string>();
+    try {
+      for (const entry of m.session.sessionManager?.getBranch?.(leafId ?? undefined) ?? []) {
+        currentPathIds.add(entry.id);
+      }
+    } catch {
+      if (leafId) currentPathIds.add(leafId);
+    }
+    const roots = m.session.sessionManager?.getTree?.() ?? [];
+    const rows = roots.length
+      ? flattenForkTree(roots, points, leafId, currentPathIds)
+      : fallbackForkRows(points, leafId);
+    return {
+      points,
+      rows,
+      leafId,
+      currentPathIds: [...currentPathIds],
+      totalEntries: m.session.sessionManager?.getEntries?.().length ?? rows.length,
+      branchableCount: points.length,
+    };
   }
 
   /**

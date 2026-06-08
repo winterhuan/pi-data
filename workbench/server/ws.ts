@@ -103,8 +103,8 @@ export function attachWebSocket(server: Server, store: SessionStore): void {
         if (msg.type === "fork_points") {
           const id = msg.sessionId ?? boundId;
           if (!id) { send({ kind: "fork_points", points: [], leafId: null }); return; }
-          const { points, leafId } = store.forkPoints(id);
-          send({ kind: "fork_points", sessionId: id, points, leafId });
+          const tree = store.forkPoints(id);
+          send({ kind: "fork_points", sessionId: id, ...tree });
           return;
         }
 
@@ -114,8 +114,8 @@ export function attachWebSocket(server: Server, store: SessionStore): void {
           if (!id || !target) { send({ kind: "error", message: "fork 缺少 sessionId/entryId" }); return; }
           await store.fork(id, target);
           // 分叉后回传新的分叉点状态,前端刷新树
-          const { points, leafId } = store.forkPoints(id);
-          send({ kind: "forked", sessionId: id, points, leafId });
+          const tree = store.forkPoints(id);
+          send({ kind: "forked", sessionId: id, ...tree });
           return;
         }
 

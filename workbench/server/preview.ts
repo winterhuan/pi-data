@@ -26,9 +26,34 @@ function fallback(content: string): string {
   return `<pre class="artifact-raw">${escapeHtml(content)}</pre>`;
 }
 
+function safeUrl(raw: string): string | null {
+  const value = raw.trim();
+  const compact = value.replace(/[\u0000-\u001F\u007F\s]+/g, "");
+  const scheme = compact.match(/^([a-zA-Z][a-zA-Z\d+.-]*):/);
+  if (scheme) {
+    const protocol = scheme[1].toLowerCase();
+    return ["http", "https", "mailto", "tel"].includes(protocol) ? escapeHtml(value) : null;
+  }
+  if (compact.startsWith("//")) return null;
+  return escapeHtml(value);
+}
+
 function renderMarkdown(content: string): string {
   const renderer = new marked.Renderer();
   renderer.html = ({ text }) => escapeHtml(text);
+  renderer.link = function ({ href, title, tokens }) {
+    const cleanHref = safeUrl(href);
+    const label = this.parser.parseInline(tokens);
+    if (!cleanHref) return label;
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+    return `<a href="${cleanHref}"${titleAttr} rel="noopener noreferrer">${label}</a>`;
+  };
+  renderer.image = ({ href, title, text }) => {
+    const cleanHref = safeUrl(href);
+    if (!cleanHref) return escapeHtml(text);
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+    return `<img src="${cleanHref}" alt="${escapeHtml(text)}"${titleAttr}>`;
+  };
   return `<article class="artifact-prose">${marked.parse(content, { async: false, renderer }) as string}</article>`;
 }
 

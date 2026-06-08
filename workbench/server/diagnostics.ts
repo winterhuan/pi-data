@@ -64,10 +64,15 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+export function parsePiCliVersionOutput(stdout: string, stderr: string): string | null {
+  const output = `${stdout}\n${stderr}`;
+  return output.match(/\d+(?:\.\d+)*/)?.[0] ?? null;
+}
+
 async function piCliVersion(): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("pi", ["--version"]);
-    return stdout.trim() || null;
+    const { stdout, stderr } = await execFileAsync("pi", ["--version"]);
+    return parsePiCliVersionOutput(stdout, stderr);
   } catch {
     return null;
   }

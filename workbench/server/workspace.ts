@@ -44,6 +44,18 @@ export interface ProjectSkill {
   valid: boolean;
 }
 
+export interface ProjectSessionEntry {
+  id: string;
+  label: string;
+  createdAt: string;
+}
+
+interface ProjectSessionRecord {
+  id: string;
+  createdAt: string;
+  lastOpened: string;
+}
+
 // 保护 index.json 的异步写锁:防止并发 saveArtifact 调用损坏索引
 let _indexLock: Promise<void> = Promise.resolve();
 async function withIndexLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -125,6 +137,32 @@ export async function readArtifact(project: string, file: string): Promise<strin
   return readFile(filePath, "utf-8");
 }
 
+function sessionRecordPath(project: string, sessionId: string): string {
+  return join(projectDir(project), "sessions", `${encodeURIComponent(sessionId)}.json`);
+}
+
+export async function recordProjectSession(
+  project: string,
+  sessionId: string,
+  timestamp = new Date().toISOString(),
+): Promise<void> {
+  const id = sessionId.trim();
+  if (!id) throw new Error("session id is required");
+  const dir = join(projectDir(project), "sessions");
+  await mkdir(dir, { recursive: true });
+
+  let record: ProjectSessionRecord = { id, createdAt: timestamp, lastOpened: timestamp };
+  try {
+    record = JSON.parse(await readFile(sessionRecordPath(project, id), "utf-8"));
+  } catch {
+    // New project/session association.
+  }
+  record.id = id;
+  record.lastOpened = timestamp;
+  record.createdAt = record.createdAt ?? timestamp;
+  await writeFile(sessionRecordPath(project, id), JSON.stringify(record, null, 2));
+}
+
 /**
  * 保存产物 + 更新 meta.json 和 index.json。
  * timestamp 由调用方传入(Pi 扩展 / server),保持可测性。
@@ -174,17 +212,64 @@ export async function saveArtifact(opts: {
   return { path: artifactPath };
 }
 
-export async function listProjectSessions(project: string): Promise<Array<{id: string, label: string, createdAt: string}>> {
+async function readProjectSessionRecords(project: string): Promise<ProjectSessionRecord[]> {
+  const dir = join(projectDir(project), "sessions");
+  let files: string[];
   try {
-    // 优先按 cwd 过滤；v1 会话 cwd 为空字符串，过滤不到时回退到全量列表
-    let sessions = await SessionManager.list(projectDir(project));
-    if (!sessions.length) sessions = await SessionManager.listAll();
+    files = await readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const records: ProjectSessionRecord[] = [];
+  for (const file of files.filter((f) => f.endsWith(".json"))) {
+    try {
+      const record = JSON.parse(await readFile(join(dir, file), "utf-8"));
+      if (record?.id) records.push(record);
+    } catch {
+      // Skip malformed runtime records.
+    }
+  }
+  return records;
+}
+
+function sessionLabel(info: any, fallbackId: string): string {
+  return info?.name ?? info?.firstMessage?.slice(0, 40) ?? fallbackId.slice(0, 12);
+}
+
+export async function listProjectSessions(project: string): Promise<ProjectSessionEntry[]> {
+  try {
+    const records = await readProjectSessionRecords(project);
+    if (records.length) {
+      let all: any[] = [];
+      try {
+        all = await SessionManager.listAll();
+      } catch {
+        // Session records still give us enough to show stable project history.
+      }
+      const byId = new Map(all.map((s) => [s.id, s]));
+      return records
+        .sort((a, b) => (b.lastOpened ?? b.createdAt).localeCompare(a.lastOpened ?? a.createdAt))
+        .slice(0, 20)
+        .map((record) => {
+          const info = byId.get(record.id);
+          return {
+            id: record.id,
+            label: sessionLabel(info, record.id),
+            createdAt: info?.created?.toISOString?.() ?? record.createdAt,
+          };
+        });
+    }
+
+    // New sessions are recorded above. This cwd lookup keeps older project-bound
+    // sessions discoverable without showing unrelated global history.
+    const sessions = await SessionManager.list(projectDir(project));
     return sessions
       .sort((a, b) => b.modified.getTime() - a.modified.getTime())
       .slice(0, 20)
       .map(s => ({
         id: s.id,
-        label: s.name ?? s.firstMessage?.slice(0, 40) ?? s.id.slice(0, 12),
+        label: sessionLabel(s, s.id),
         createdAt: s.created.toISOString(),
       }));
   } catch { return []; }

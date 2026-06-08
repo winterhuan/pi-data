@@ -47,6 +47,25 @@ describe("renderArtifact", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
+  it("strips unsafe javascript links in markdown preview", () => {
+    const html = renderArtifact("x.md", "[bad](javascript:alert(1))");
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("bad");
+  });
+
+  it("keeps safe markdown links with rel isolation", () => {
+    const html = renderArtifact("x.md", "[ok](https://example.com)");
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  it("strips unsafe markdown image URLs", () => {
+    const html = renderArtifact("x.md", "![bad](javascript:alert(1))");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("bad");
+  });
+
   it("escapes html in csv cells", () => {
     const html = renderArtifact("x.csv", "a,b\n<b>x</b>,y");
     expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");

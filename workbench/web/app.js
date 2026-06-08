@@ -72,10 +72,10 @@ function handle(msg) {
     return;
   }
   if (msg.kind === "error") { toast("出错了：" + msg.message); if (appState === "streaming") setState("active"); finishAssistant(); return; }
-  if (msg.kind === "fork_points") { renderForkPoints(msg.points, msg.leafId); return; }
+  if (msg.kind === "fork_points") { renderForkPoints(msg); return; }
   if (msg.kind === "forked") {
     document.getElementById("stream").innerHTML = ""; curAssistant = null;
-    renderForkPoints(msg.points, msg.leafId); toast("已分叉，从这里开新线");
+    renderForkPoints(msg); toast("已分叉，从这里开新线");
     return;
   }
   if (msg.kind === "agent_event") renderEvent(msg.event);
@@ -154,12 +154,36 @@ async function toggleProject(name, itemEl) {
   activeProject = name; setState("loading-project");
 
   try {
-    const [sessions, bible, skills] = await Promise.all([
+    const [sessions, bible, skills, artifacts] = await Promise.all([
       fetch(`/api/projects/${encodeURIComponent(name)}/sessions`).then(r => r.json()).catch(() => []),
       fetch(`/api/projects/${encodeURIComponent(name)}/bible`).then(r => r.json()).catch(() => []),
       fetch(`/api/projects/${encodeURIComponent(name)}/skills`).then(r => r.json()).catch(() => []),
+      fetch(`/api/project/${encodeURIComponent(name)}`).then(r => r.json()).catch(() => []),
     ]);
     children.innerHTML = "";
+
+    // Artifacts
+    if (artifacts.length) {
+      const aSec = document.createElement("div");
+      aSec.innerHTML = `<div class="proj-section"><span class="proj-section-label">产物</span><span class="proj-section-count">${artifacts.length}</span></div>`;
+      artifacts.forEach(file => {
+        const el = document.createElement("div");
+        el.className = "artifact-item";
+        el.textContent = file;
+        el.addEventListener("click", () => {
+          activeProject = name;
+          loadPreview(name, file);
+          saveRecent({ type: "artifact", name: `${name}/${file}`, label: file, project: name, file });
+          if (matchMedia("(max-width: 768px)").matches) {
+            const scroller = document.querySelector(".three-panel");
+            const preview = document.querySelector(".right-panel");
+            if (scroller && preview) scroller.scrollTo({ top: preview.offsetTop, behavior: "smooth" });
+          }
+        });
+        aSec.appendChild(el);
+      });
+      children.appendChild(aSec);
+    }
 
     // Sessions
     const sSec = document.createElement("div");
@@ -195,7 +219,7 @@ async function toggleProject(name, itemEl) {
 
     if (sessions.length === 0) {
       setState("no-project");
-      document.getElementById("state-no-project").querySelector("p").textContent = "还没有会话，点「新建会话」开始";
+      document.getElementById("state-no-project").querySelector("p").textContent = "还没有会话，可以新建会话或打开产物";
     } else {
       const lastSid = localStorage.getItem("pi-last-session");
       const resume = lastSid && sessions.find(s => s.id === lastSid);
@@ -312,15 +336,90 @@ document.getElementById("fork-btn").addEventListener("click", () => {
   if (sessionId) wsSend({ type: "fork_points", sessionId });
 });
 document.getElementById("fork-close").addEventListener("click", () => document.getElementById("fork-drawer").classList.add("hidden"));
-function renderForkPoints(points, leafId) {
+
+function rowsFromPoints(points = [], leafId = null) {
+  return points.map((p, i) => ({
+    id: p.entryId,
+    depth: i,
+    kind: "user",
+    role: "user",
+    text: p.text,
+    branchable: true,
+    current: p.entryId === leafId,
+    onCurrentPath: p.entryId === leafId,
+    childCount: 0,
+  }));
+}
+
+function renderForkPoints(data, legacyLeafId) {
+  const payload = Array.isArray(data) ? { points: data, leafId: legacyLeafId } : data;
+  const rows = payload.rows?.length ? payload.rows : rowsFromPoints(payload.points, payload.leafId);
   const body = document.getElementById("fork-body");
-  if (!points?.length) { body.innerHTML = `<p class="empty-hint">没有可分叉的消息</p>`; return; }
+  if (!rows?.length) { body.innerHTML = `<p class="empty-hint">没有可分叉的消息</p>`; return; }
   body.innerHTML = "";
-  points.forEach((p, i) => {
-    const node = document.createElement("div");
-    node.className = `fork-node${leafId && p.entryId === leafId ? " current" : ""}`;
-    node.innerHTML = `<span class="fork-dot">${i+1}</span><span class="fork-text">${esc(p.text).slice(0,60)}</span>${leafId && p.entryId === leafId ? `<span class="fork-here">◀ 当前</span>` : ""}`;
-    node.addEventListener("click", () => { wsSend({ type: "fork", sessionId, payload: { entryId: p.entryId } }); document.getElementById("fork-drawer").classList.add("hidden"); });
+
+  const summary = document.createElement("div");
+  summary.className = "fork-summary";
+  const branchableCount = payload.branchableCount ?? (payload.points?.length ?? rows.filter(r => r.branchable).length);
+  summary.textContent = `${rows.length} 个节点 · ${branchableCount} 个可分叉点`;
+  body.appendChild(summary);
+
+  rows.forEach((row) => {
+    const node = document.createElement(row.branchable ? "button" : "div");
+    node.className = [
+      "fork-node",
+      `fork-${row.kind || row.role || "entry"}`,
+      row.current ? "current" : "",
+      row.onCurrentPath ? "on-path" : "",
+      row.branchable ? "branchable" : "",
+    ].filter(Boolean).join(" ");
+    node.style.setProperty("--depth", String(Math.min(row.depth ?? 0, 8)));
+    if (row.branchable) {
+      node.type = "button";
+      node.addEventListener("click", () => {
+        wsSend({ type: "fork", sessionId, payload: { entryId: row.id } });
+        document.getElementById("fork-drawer").classList.add("hidden");
+      });
+    }
+
+    const rail = document.createElement("span");
+    rail.className = "fork-rail";
+    rail.textContent = row.childCount > 1 ? "┬" : row.onCurrentPath ? "│" : "·";
+
+    const content = document.createElement("span");
+    content.className = "fork-content";
+
+    const meta = document.createElement("span");
+    meta.className = "fork-meta";
+    meta.textContent = row.kind === "user" ? "用户" : row.kind === "assistant" ? "Pi" : row.kind === "summary" ? "摘要" : "节点";
+
+    const text = document.createElement("span");
+    text.className = "fork-text";
+    text.textContent = row.text || "(空消息)";
+
+    content.appendChild(meta);
+    content.appendChild(text);
+    if (row.label) {
+      const label = document.createElement("span");
+      label.className = "fork-label";
+      label.textContent = row.label;
+      content.appendChild(label);
+    }
+
+    if (row.current) {
+      const current = document.createElement("span");
+      current.className = "fork-here";
+      current.textContent = "当前";
+      content.appendChild(current);
+    } else if (row.branchable) {
+      const action = document.createElement("span");
+      action.className = "fork-action";
+      action.textContent = "从这里分叉";
+      content.appendChild(action);
+    }
+
+    node.appendChild(rail);
+    node.appendChild(content);
     body.appendChild(node);
   });
 }
@@ -400,6 +499,8 @@ function addPaletteItem(container, icon, label, type, data) {
     if (type === "project") {
       const items = document.querySelectorAll(".proj-item");
       for (const item of items) { if (item.dataset.name === data.name) { item.querySelector(".proj-header").click(); break; } }
+    } else if (type === "artifact") {
+      loadPreview(data.project, data.file);
     }
   });
   container.appendChild(el);

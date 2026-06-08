@@ -114,4 +114,15 @@ describe("api route helpers", () => {
     expect(Array.isArray(result)).toBe(true);
     // Either [] (session dir missing) or array of sessions — both valid
   });
+
+  it("listProjectSessions returns project session records", async () => {
+    await ws.createProject("session-records-proj");
+    await ws.recordProjectSession("session-records-proj", "pi-session-1", "2026-01-01T00:00:00.000Z");
+
+    const result = await ws.listProjectSessions("session-records-proj");
+
+    expect(result).toEqual([
+      { id: "pi-session-1", label: "pi-session-1", createdAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+  });
 });
