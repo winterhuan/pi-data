@@ -1,8 +1,94 @@
 # Pi 本地智能工作台
 
-基于 [Pi](https://github.com/earendil-works/pi) 的本地智能工作台。浏览器打开,既能工作(数据分析、写代码),又能创作(散文、论文、小说、短剧、电影剧本),产物能扫码推到手机看。
+## 项目名
 
-## 它能做什么
+Pi 本地智能工作台(Pi Workbench)
+
+## 这是什么
+
+一句话描述:基于 [Pi](https://github.com/earendil-works/pi) SDK 的本地浏览器工作台,使用 Unity2.ai API 的 `gpt-5.5` 模型,把数据分析、代码协作、长文创作、产物预览和项目交付管理放在一个本地档案室里。
+
+它适合围绕同一个项目连续工作:电脑端对话生成产物并实时预览,手机端补充灵感、查看档案、恢复会话,也能扫码查看交付内容。
+
+## 怎么跑
+
+### 1. clone 仓库
+
+```bash
+git clone git@github.com:winterhuan/pi-data.git
+cd pi-data
+```
+
+### 2. 安装依赖
+
+```bash
+cd workbench/server
+npm install
+```
+
+### 3. 配置 Unity2.ai API key 和模型
+
+在仓库根目录创建 `.env`(已被 `.gitignore` 忽略,不要提交真实 key):
+
+```bash
+UNITY2_API_KEY=xxx
+```
+
+Pi 默认读取 `~/.pi/agent/` 下的 auth/model 配置。确保 Pi 的模型配置里有 Unity2.ai provider,API key 指向 `$UNITY2_API_KEY`,模型 ID 为 `gpt-5.5`。如果还没有配置,可在 `~/.pi/agent/models.json` 里加入类似配置,其中 `baseUrl` 填 Unity2.ai 控制台提供的 OpenAI-compatible API base URL:
+
+```json
+{
+  "providers": {
+    "unity2": {
+      "name": "Unity2.ai",
+      "baseUrl": "https://<Unity2.ai OpenAI-compatible API base URL>",
+      "api": "openai-completions",
+      "apiKey": "$UNITY2_API_KEY",
+      "models": [
+        {
+          "id": "gpt-5.5",
+          "name": "gpt-5.5",
+          "input": ["text", "image"],
+          "reasoning": true,
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}
+```
+
+启动前让当前 shell 读取 `.env`:
+
+```bash
+cd workbench/server
+set -a
+source ../../.env
+set +a
+```
+
+也可以通过 `pi auth` 或直接编辑 `~/.pi/agent/auth.json` 配置 key,只要 `npm run doctor` 能看到可用模型即可。
+
+### 4. 运行
+
+```bash
+npm run setup
+npm run start:checked
+# 浏览器打开 http://localhost:7777
+```
+
+`npm run setup` 会幂等安装 Pi 扩展 symlink 并检查 Node、Pi SDK、依赖、auth/model、workspace 等基础条件。`npm run doctor` 只做诊断,不修改文件。
+
+## 用了什么
+
+- Unity2.ai API:`gpt-5.5` 模型
+- Pi SDK:`@earendil-works/pi-coding-agent`
+- Node 22+、HTTP + WebSocket server
+- 浏览器原生前端:无构建步骤,静态 HTML/CSS/JS
+- 本地项目档案:`workbench/workspace/{项目名}/`
+
+## 主要功能
 
 - **活页本实时预览** — 左边对话,右边产物实时长出来:小说排成阅读页、剧本排成 Fountain 剧本页、数据排成表格
 - **工作 / 创作双模式** — 顶栏切换,注入不同的 system prompt
@@ -49,27 +135,13 @@ server 和扩展共享两类轻量状态:
 
 ## 前置条件
 
-- Pi 已全局安装(`pi --version` 应为 0.78+),`~/.pi/agent/` 配好 auth(`~/.pi/agent/auth.json` 或 API key 环境变量)
 - Node 22+
-
-## 安装与启动
-
-```bash
-cd workbench/server
-npm install
-npm run setup
-npm run start:checked
-# 浏览器打开 http://localhost:7777
-```
-
-`npm run setup` 会幂等安装 Pi 扩展 symlink 并检查 Node、Pi SDK、依赖、auth/model、workspace 等基础条件。
-`npm run doctor` 只做诊断,不修改文件；旧项目里的中文 skill 名会作为 warning 报告,不会自动删除或迁移。
+- Pi 已全局安装(`pi --version` 应为 0.78+)
+- Unity2.ai API key,并在 Pi auth/model 配置中启用 `gpt-5.5`
 
 ## 手机访问
 
-本机开了 WSL2 mirrored 网络模式(`.wslconfig` 里 `networkingMode=mirrored`),
-手机与电脑同局域网时,直接访问 `http://<本机IP>:7777`(当前 192.168.5.94)。
-工作台里点「扫码看」会生成指向局域网 IP 的二维码,手机扫码即可。
+手机与电脑同局域网时,直接访问 `http://<本机局域网 IP>:7777`。WSL2 mirrored 网络模式(`.wslconfig` 里 `networkingMode=mirrored`)下通常可直接使用宿主机局域网 IP。工作台里点「扫码看」会生成指向局域网 IP 的二维码,手机扫码即可。
 
 若你的网络环境 IP 探测不对,可用环境变量覆盖:`WORKBENCH_LAN_IP=192.168.x.x npm start`
 
