@@ -32,12 +32,16 @@ export type WorkbenchMode = "work" | "create";
 // Pi 扩展从 symlink 路径加载,不可靠地 import server 文件;因此只共享这份进程内状态。
 type WorkbenchGlobals = typeof globalThis & {
   __workbenchSessionModes?: Map<string, WorkbenchMode>;
+  __workbenchSessionProjects?: Map<string, string>;
 };
 
 const workbenchGlobals = globalThis as WorkbenchGlobals;
 export const sessionModes =
   workbenchGlobals.__workbenchSessionModes ?? new Map<string, WorkbenchMode>();
 workbenchGlobals.__workbenchSessionModes = sessionModes;
+export const sessionProjects =
+  workbenchGlobals.__workbenchSessionProjects ?? new Map<string, string>();
+workbenchGlobals.__workbenchSessionProjects = sessionProjects;
 
 const PAUSE_AFTER_MS = 30_000; // 断连 30s 标记 paused
 const DESTROY_AFTER_MS = 120_000; // paused 2min 销毁
@@ -202,6 +206,7 @@ export class SessionStore {
         existing.mode = mode;
         existing.paused = false;
         sessionModes.set(existing.id, mode);
+        sessionProjects.set(existing.id, projectName);
         return existing;
       }
     }
@@ -217,6 +222,7 @@ export class SessionStore {
     });
     const id = session.sessionId;
     sessionModes.set(id, mode);
+    sessionProjects.set(id, projectName);
     await recordProjectSession(projectName, id);
     const managed: ManagedSession = { id, session, project: projectName, mode, paused: false };
     this.sessions.set(id, managed);
@@ -326,6 +332,7 @@ export class SessionStore {
     void m.session.abort().catch(() => {});
     this.sessions.delete(id);
     sessionModes.delete(id);
+    sessionProjects.delete(id);
     console.log(`[session] destroyed ${id} (idle timeout)`);
   }
 }

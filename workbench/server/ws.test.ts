@@ -127,4 +127,30 @@ describe("websocket contract", () => {
     });
     ws.close();
   });
+
+  it("navigates to a fork target and returns refreshed fork tree data", async () => {
+    store.forkPoints.mockReturnValueOnce({
+      points: [{ entryId: "u1", text: "hello" }],
+      rows: [{ id: "u1", kind: "user", branchable: true, current: true }],
+      leafId: "u1",
+      currentPathIds: ["u1"],
+      totalEntries: 1,
+      branchableCount: 1,
+    });
+    const ws = await openClient();
+    ws.send(JSON.stringify({ type: "create", payload: { project: "ws-proj", mode: "create" } }));
+    await nextJson(ws);
+
+    ws.send(JSON.stringify({ type: "fork", payload: { entryId: "u1" } }));
+    const msg = await nextJson(ws);
+
+    expect(store.fork).toHaveBeenCalledWith("new-pi-session", "u1");
+    expect(msg).toMatchObject({
+      kind: "forked",
+      sessionId: "new-pi-session",
+      rows: [{ id: "u1", current: true }],
+      leafId: "u1",
+    });
+    ws.close();
+  });
 });

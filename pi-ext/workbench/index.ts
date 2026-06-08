@@ -17,7 +17,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 const Type = {
   String: (options: Record<string, unknown> = {}) => ({ type: "string", ...options }),
@@ -41,6 +41,7 @@ const WORKSPACE_ROOT = resolve(WORKSPACE);
 type Mode = "work" | "create";
 type WorkbenchGlobals = typeof globalThis & {
   __workbenchSessionModes?: Map<string, Mode>;
+  __workbenchSessionProjects?: Map<string, string>;
 };
 
 function sessionModes(): Map<string, Mode> {
@@ -54,6 +55,43 @@ function currentMode(sessionId?: string): Mode {
   // fallback: 取最近设置的模式
   const last = [...modes.values()].pop();
   return last ?? "create";
+}
+
+function sessionProjects(): Map<string, string> {
+  const g = globalThis as WorkbenchGlobals;
+  return g.__workbenchSessionProjects ?? new Map<string, string>();
+}
+
+function currentProject(sessionId?: string): string | undefined {
+  const projects = sessionProjects();
+  if (sessionId) return projects.get(sessionId);
+  return [...projects.values()].pop();
+}
+
+async function projectBriefPrompt(project: string | undefined): Promise<string> {
+  if (!project) return "";
+  try {
+    const meta = JSON.parse(await readFile(workspacePath(safeSeg(project), "meta.json"), "utf-8"));
+    const brief = meta?.brief ?? {};
+    const lines = [
+      ["目标", brief.goal],
+      ["受众", brief.audience],
+      ["背景", brief.background],
+      ["约束", brief.constraints],
+      ["验收口径", brief.acceptance],
+    ]
+      .filter(([, value]) => String(value ?? "").trim())
+      .map(([label, value]) => `- ${label}: ${String(value).trim()}`);
+    if (!lines.length) return "";
+    return [
+      `当前项目: ${project}`,
+      "项目简报:",
+      ...lines,
+      "后续回答和产物必须优先贴合这份项目简报;如简报与用户最新指令冲突,先指出冲突并按用户最新指令推进。",
+    ].join("\n");
+  } catch {
+    return "";
+  }
 }
 
 async function readIndex(): Promise<Array<{ id: string; name: string; type: string; lastUpdated: string }>> {
@@ -141,7 +179,8 @@ function safeSeg(s: string): string {
 
 function workspacePath(...segs: string[]): string {
   const target = resolve(WORKSPACE_ROOT, ...segs);
-  if (target !== WORKSPACE_ROOT && !target.startsWith(WORKSPACE_ROOT + "/")) {
+  const rel = relative(WORKSPACE_ROOT, target);
+  if (rel !== "" && (rel.startsWith("..") || isAbsolute(rel))) {
     throw new Error("invalid workspace path");
   }
   return target;
@@ -270,6 +309,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event: any, ctx: ExtensionContext) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const extra = currentMode(sessionId) === "work" ? WORK_PROMPT : CREATE_PROMPT;
-    return { systemPrompt: `${event.systemPrompt}\n\n${extra}` };
+    const brief = await projectBriefPrompt(currentProject(sessionId));
+    return { systemPrompt: [event.systemPrompt, extra, brief].filter(Boolean).join("\n\n") };
   });
 }

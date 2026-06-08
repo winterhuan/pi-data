@@ -88,6 +88,7 @@ describe("SessionStore", () => {
     expect(managed.id).toBe("new-pi-session");
     expect(store.get("new-pi-session")).toBe(managed);
     expect(sessionModule.sessionModes.get("new-pi-session")).toBe("create");
+    expect(sessionModule.sessionProjects.get("new-pi-session")).toBe("project-a");
   });
 
   it("opens the real Pi session file when resumeSessionId is provided", async () => {

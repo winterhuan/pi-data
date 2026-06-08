@@ -121,8 +121,12 @@ describe("api route helpers", () => {
 
     const result = await ws.listProjectSessions("session-records-proj");
 
-    expect(result).toEqual([
-      { id: "pi-session-1", label: "pi-session-1", createdAt: "2026-01-01T00:00:00.000Z" },
-    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "pi-session-1",
+      label: "pi-session-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastOpened: "2026-01-01T00:00:00.000Z",
+    });
   });
 });

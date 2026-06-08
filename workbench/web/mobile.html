@@ -8,7 +8,7 @@
   <style>
     body { display: flex; flex-direction: column; height: 100vh; }
     .m-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg2); }
-    .m-tab { flex: 1; padding: .6rem; text-align: center; font-size: .85rem; color: var(--fg-dim); cursor: pointer; border: 0; background: 0; }
+    .m-tab { flex: 1; min-width: 0; padding: .6rem; text-align: center; font-size: .85rem; color: var(--fg-dim); cursor: pointer; border: 0; background: 0; }
     .m-tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
     .m-panel { display: none; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
     .m-panel.active { display: flex; }
@@ -17,17 +17,117 @@
     .m-modes { display: flex; gap: .4rem; padding: .5rem .75rem; background: var(--bg2); border-bottom: 1px solid var(--border); }
     .m-mode-btn { flex: 1; padding: .4rem; font-size: .8rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--fg-dim); cursor: pointer; }
     .m-mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .m-tool-btn { flex: .8; min-width: 4.4rem; padding: .4rem; font-size: .8rem; border-radius: 6px; border: 1px solid rgba(105,183,255,.35); background: rgba(105,183,255,.06); color: var(--accent); cursor: pointer; }
     .m-project { display: flex; gap: .4rem; padding: .5rem .75rem; background: var(--bg2); border-bottom: 1px solid var(--border); }
     .m-project select { flex: 1; min-width: 0; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: .45rem; font: inherit; }
     .m-project button { width: 2.4rem; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--fg); }
+    .m-snapshot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .45rem; padding: .55rem .75rem; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .m-stat { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: .5rem; background: var(--surface); color: var(--fg-dim); font-size: .72rem; }
+    .m-stat strong { display: block; color: var(--fg); font-size: 1.05rem; line-height: 1.1; }
+    .m-stat.ok strong { color: var(--ok); }
+    .m-stat.warn strong { color: var(--accent-2); }
+    .m-empty { margin: auto; width: 100%; max-width: 20rem; border: 1px dashed var(--border); border-radius: 8px; padding: 1rem; color: var(--fg-dim); display: grid; gap: .75rem; line-height: 1.55; }
+    .m-empty strong { color: var(--fg); font-size: 1rem; }
+    .m-empty-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+    .m-empty-actions button { min-height: 44px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg3); color: var(--fg); font: inherit; }
+    .m-empty-actions button:first-child { background: var(--accent); border-color: var(--accent); color: #07111d; font-weight: 700; }
+    .m-starters { display: flex; gap: .5rem; overflow-x: auto; padding: .55rem .75rem; background: linear-gradient(90deg, var(--bg) 0, var(--bg) 82%, rgba(105,183,255,.08)); border-bottom: 1px solid var(--border); }
+    .m-starters { scrollbar-width: none; -ms-overflow-style: none; }
+    .m-starters::-webkit-scrollbar { display: none; }
+    .m-starter { flex: 0 0 8.8rem; min-height: 5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--fg); padding: .55rem; text-align: left; font: inherit; display: grid; gap: .25rem; }
+    .m-starter strong { font-size: .84rem; }
+    .m-starter span { color: var(--fg-dim); font-size: .68rem; line-height: 1.35; }
+    .mobile-next-actions { display: none; gap: .45rem; overflow-x: auto; padding: .55rem .75rem; background: var(--surface); border-bottom: 1px solid var(--border); scrollbar-width: none; -ms-overflow-style: none; }
+    .mobile-next-actions::-webkit-scrollbar { display: none; }
+    .mobile-next-actions.has-actions { display: flex; }
+    .mobile-next-action { flex: 0 0 13rem; min-width: 0; border: 1px solid var(--border); background: var(--bg2); color: var(--fg); border-radius: 8px; padding: .55rem .65rem; text-align: left; font: inherit; display: grid; gap: .22rem; }
+    .mobile-next-action.primary { border-color: rgba(105,183,255,.38); }
+    .mobile-next-action.warning { border-color: rgba(245,193,92,.42); }
+    .mobile-next-action.danger { border-color: rgba(255,107,107,.42); }
+    .mobile-next-action.info { border-color: rgba(132,214,180,.32); }
+    .mobile-next-action small, .mobile-next-action span { color: var(--fg-dim); font-size: .68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mobile-next-action strong { font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mobile-activity { display: none; gap: .45rem; overflow-x: auto; padding: .55rem .75rem; background: var(--bg); border-bottom: 1px solid var(--border); scrollbar-width: none; -ms-overflow-style: none; }
+    .mobile-activity::-webkit-scrollbar { display: none; }
+    .mobile-activity.has-activity { display: flex; }
+    .mobile-activity-item { flex: 0 0 12rem; min-width: 0; border: 1px solid var(--border); background: var(--surface); color: var(--fg); border-radius: 8px; padding: .5rem .6rem; text-align: left; font: inherit; display: grid; gap: .2rem; }
+    .mobile-activity-item small, .mobile-activity-item span { color: var(--fg-dim); font-size: .68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mobile-activity-item strong { font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .m-composer { display: flex; gap: .5rem; padding: .5rem .75rem; border-top: 1px solid var(--border); background: var(--bg2); }
     .m-composer textarea { flex: 1; min-height: 3rem; max-height: 8rem; resize: none; background: var(--bg3); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: .5rem; font: inherit; }
     .m-composer button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 0 1rem; font-weight: 600; }
     /* 档案室面板 */
     .m-archive { flex: 1; overflow-y: auto; padding: .75rem; display: flex; flex-direction: column; gap: .5rem; }
+    .m-archive-search { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg3); color: var(--fg); padding: .45rem .6rem; font: inherit; }
     /* 预览面板 */
     .m-preview { flex: 1; overflow-y: auto; padding: 1rem; }
     .m-preview-head { font-size: .8rem; color: var(--fg-dim); margin-bottom: .75rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+    .m-preview-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; margin: -.25rem 0 .75rem; }
+    .m-preview-tools button { min-width: 0; min-height: 40px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg3); color: var(--fg); font: inherit; font-size: .72rem; padding: 0 .2rem; }
+    .mobile-export, .mobile-rename, .mobile-pin, .mobile-tags { justify-self: start; min-height: 34px; border-radius: 999px; border: 1px solid rgba(105,183,255,.35); background: transparent; color: var(--accent); padding: .25rem .6rem; font: inherit; font-size: .75rem; }
+    .mobile-rename { border-color: var(--border); color: var(--fg); }
+    .mobile-pin { border-color: rgba(245,193,92,.4); color: var(--accent-2); }
+    .proj-card.pinned { border-color: rgba(245,193,92,.34); background: rgba(245,193,92,.045); }
+    .mobile-tag-row { display: flex; flex-wrap: wrap; gap: .25rem; }
+    .mobile-tag-chip { border: 1px solid rgba(105,183,255,.28); border-radius: 999px; color: var(--accent); background: rgba(105,183,255,.055); padding: .08rem .42rem; font-size: .68rem; }
+    .mobile-deliverables { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin-bottom: .5rem; padding: .5rem 0; }
+    .mobile-readiness { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin: .5rem 0; }
+    .delivery-check-panel { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin: .5rem 0; padding: .65rem; display: grid; gap: .5rem; }
+    .delivery-check-panel.ready { border-color: rgba(90,210,126,.38); background: rgba(90,210,126,.05); }
+    .delivery-check-panel.blocked { border-color: rgba(245,193,92,.35); }
+    .delivery-check-summary { margin: 0; color: var(--fg-dim); font-size: .76rem; line-height: 1.45; }
+    .delivery-check-list { display: grid; gap: .4rem; }
+    .delivery-check-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem; align-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); padding: .5rem; }
+    .delivery-check-item.blocker { border-color: rgba(255,107,107,.38); }
+    .delivery-check-item.warning { border-color: rgba(245,193,92,.34); }
+    .delivery-check-copy { min-width: 0; display: grid; gap: .15rem; }
+    .delivery-check-copy strong, .delivery-check-copy small { overflow: hidden; text-overflow: ellipsis; }
+    .delivery-check-copy strong { color: var(--fg); font-size: .78rem; white-space: nowrap; }
+    .delivery-check-copy small { color: var(--fg-dim); font-size: .7rem; line-height: 1.35; }
+    .delivery-check-item button, .delivery-check-download { min-height: 34px; border: 1px solid rgba(105,183,255,.38); border-radius: 999px; background: transparent; color: var(--accent); padding: .2rem .6rem; font: inherit; font-size: .72rem; }
+    .delivery-check-ok { color: var(--ok); font-size: .76rem; }
+    .mobile-type-panel { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin-bottom: .5rem; padding: .55rem .6rem; display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
+    .mobile-type-panel span { min-width: 0; display: grid; gap: .12rem; }
+    .mobile-type-panel strong { color: var(--fg); font-size: .84rem; }
+    .mobile-type-panel small { color: var(--fg-dim); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobile-type-panel select { min-height: 38px; max-width: 9rem; border: 1px solid rgba(105,183,255,.32); border-radius: 8px; background: var(--bg2); color: var(--fg); padding: 0 .5rem; font: inherit; font-size: .78rem; }
+    .mobile-brief-panel { border: 1px solid var(--border); border-radius: 8px; background: rgba(85,214,181,.035); margin-bottom: .5rem; padding: .55rem .6rem; display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
+    .mobile-brief-panel.filled { border-color: rgba(85,214,181,.32); background: rgba(85,214,181,.06); }
+    .mobile-brief-panel span { min-width: 0; display: grid; gap: .12rem; }
+    .mobile-brief-panel strong { color: var(--fg); font-size: .84rem; }
+    .mobile-brief-panel small { color: var(--fg-dim); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobile-brief-panel button { flex-shrink: 0; min-height: 34px; border: 1px solid rgba(85,214,181,.42); border-radius: 999px; background: transparent; color: var(--mint); font: inherit; font-size: .74rem; padding: .2rem .6rem; }
+    .mobile-tags-panel { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin-bottom: .5rem; padding: .55rem .6rem; display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
+    .mobile-tags-panel span { min-width: 0; display: grid; gap: .12rem; }
+    .mobile-tags-panel strong { color: var(--fg); font-size: .84rem; }
+    .mobile-tags-panel small { color: var(--fg-dim); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobile-tags-panel button { flex-shrink: 0; min-height: 34px; border: 1px solid rgba(105,183,255,.35); border-radius: 999px; background: transparent; color: var(--accent); font: inherit; font-size: .74rem; padding: .2rem .6rem; }
+    .mobile-session-panel { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); margin-bottom: .5rem; padding: .35rem 0 .15rem; }
+    .mobile-session-item { width: calc(100% - 1rem); margin: .35rem .5rem; min-height: 54px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--fg); font: inherit; padding: .5rem .6rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; text-align: left; }
+    .mobile-session-item:active { border-color: var(--accent); background: var(--bg3); }
+    .mobile-session-main { min-width: 0; display: grid; gap: .16rem; }
+    .mobile-session-main strong, .mobile-session-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobile-session-main strong { font-size: .84rem; }
+    .mobile-session-main small { color: var(--fg-dim); font-size: .72rem; }
+    .mobile-session-action { color: var(--accent); font-size: .76rem; flex-shrink: 0; }
+    .mobile-new-session { margin-bottom: .35rem; }
+    .mobile-trash-panel { border: 1px solid rgba(255,107,107,.3); border-radius: 8px; background: rgba(255,107,107,.045); margin-bottom: .5rem; padding: .35rem 0; }
+    .mobile-trash-item { width: calc(100% - 1rem); margin: .35rem .5rem; min-height: 54px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--fg); padding: .5rem .6rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .mobile-trash-item button { flex-shrink: 0; min-height: 34px; border: 1px solid rgba(255,107,107,.4); border-radius: 999px; background: transparent; color: var(--err); font: inherit; font-size: .74rem; padding: .2rem .6rem; }
+    .mobile-trash-item button:disabled { color: var(--fg-dim); border-color: var(--border); }
+    .mobile-brief-card { width: min(92vw, 460px); max-height: min(86vh, 760px); border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); display: grid; grid-template-rows: auto minmax(0,1fr) auto; overflow: hidden; }
+    .mobile-brief-head { padding: .75rem; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+    .mobile-brief-head h3 { margin: 0; font-size: .95rem; }
+    .mobile-brief-head p { margin: .2rem 0 0; color: var(--fg-dim); font-size: .72rem; }
+    .mobile-brief-head button { min-height: 34px; }
+    .mobile-brief-form { min-height: 0; overflow-y: auto; padding: .75rem; display: grid; gap: .6rem; }
+    .mobile-brief-form label { display: grid; gap: .3rem; color: var(--fg-dim); font-size: .72rem; }
+    .mobile-brief-form textarea { width: 100%; min-height: 58px; resize: vertical; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); padding: .55rem .6rem; font: inherit; line-height: 1.5; }
+    .mobile-brief-actions { padding: .65rem .75rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: .5rem; }
+    .mobile-brief-actions button { min-height: 38px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--fg); font: inherit; padding: 0 .7rem; }
+    .mobile-brief-actions button:last-child { border-color: var(--accent); background: var(--accent); color: #07111d; font-weight: 700; }
+    #mobile-fork-drawer { width: min(92vw, 430px); }
+    #mobile-fork-body { padding-bottom: 2rem; }
   </style>
 </head>
 <body>
@@ -47,12 +147,30 @@
     <div class="m-modes">
       <button class="m-mode-btn active" data-mode="create">创作</button>
       <button class="m-mode-btn" data-mode="work">工作</button>
+      <button id="mobile-fork-btn" class="m-tool-btn" type="button">分叉</button>
     </div>
     <div class="m-project">
       <select id="project-select" aria-label="项目"></select>
       <button id="project-new" type="button">＋</button>
     </div>
-    <div id="stream" class="m-stream"></div>
+    <div class="m-snapshot" aria-label="工作台摘要">
+      <div class="m-stat"><strong id="m-project-count">--</strong>项目</div>
+      <div class="m-stat"><strong id="m-artifact-count">--</strong>产物</div>
+      <div class="m-stat" id="m-health-card"><strong id="m-health-state">--</strong>状态</div>
+    </div>
+    <div class="m-starters" id="mobile-starters" aria-label="产出起手式"></div>
+    <div class="mobile-next-actions" id="mobile-next-actions" aria-label="下一步行动"></div>
+    <div class="mobile-activity" id="mobile-activity" aria-label="最近活动"></div>
+    <div id="stream" class="m-stream">
+      <div class="m-empty" id="mobile-empty">
+        <strong>准备开始</strong>
+        <span>选择项目后即可对话，也可以先新建一个项目。</span>
+        <div class="m-empty-actions">
+          <button id="mobile-empty-new" type="button">新建</button>
+          <button id="mobile-empty-archive" type="button">档案</button>
+        </div>
+      </div>
+    </div>
     <form id="composer" class="m-composer">
       <textarea id="input" placeholder="灵感、想法、指令…" autofocus></textarea>
       <button type="submit">发</button>
@@ -61,6 +179,11 @@
 
   <!-- 档案室面板 -->
   <div id="tab-archive" class="m-panel">
+    <div class="m-project">
+      <input id="archive-search" class="m-archive-search" type="search" placeholder="搜索项目…" autocomplete="off">
+      <button id="mobile-import-btn" type="button">导入</button>
+      <input id="mobile-import-file" type="file" accept=".zip,application/zip" hidden>
+    </div>
     <div class="m-archive" id="archive-body">
       <p class="empty-hint">加载中…</p>
     </div>
@@ -72,6 +195,65 @@
       <p class="empty-hint">在档案室点一个产物来预览。</p>
     </div>
   </div>
+
+  <div id="mobile-editor-modal" class="qr-modal hidden">
+    <div class="artifact-editor-card">
+      <div class="artifact-editor-head">
+        <div>
+          <h3 id="mobile-editor-title">编辑产物</h3>
+          <p id="mobile-editor-meta"></p>
+        </div>
+        <button id="mobile-editor-close" class="ghost-btn" type="button">关闭</button>
+      </div>
+      <input id="mobile-editor-file" class="text-input hidden" type="text" placeholder="文件名，例如 brief.md">
+      <textarea id="mobile-editor-text" class="artifact-editor-text" spellcheck="false"></textarea>
+      <div class="artifact-editor-actions">
+        <button id="mobile-editor-cancel" class="ghost-btn" type="button">取消</button>
+        <button id="mobile-editor-save" class="primary-action compact" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mobile-history-modal" class="qr-modal hidden">
+    <div class="artifact-history-card">
+      <div class="artifact-editor-head">
+        <div>
+          <h3>版本历史</h3>
+          <p id="mobile-history-meta"></p>
+        </div>
+        <button id="mobile-history-close" class="ghost-btn" type="button">关闭</button>
+      </div>
+      <div id="mobile-history-list" class="artifact-history-list"></div>
+    </div>
+  </div>
+
+  <div id="mobile-brief-modal" class="qr-modal hidden">
+    <div class="mobile-brief-card">
+      <div class="mobile-brief-head">
+        <div>
+          <h3>项目简报</h3>
+          <p id="mobile-brief-meta"></p>
+        </div>
+        <button id="mobile-brief-close" class="ghost-btn" type="button">关闭</button>
+      </div>
+      <div class="mobile-brief-form">
+        <label>目标<textarea id="mobile-brief-goal" rows="2" placeholder="最终要产出什么?"></textarea></label>
+        <label>受众<textarea id="mobile-brief-audience" rows="2" placeholder="谁会使用或验收?"></textarea></label>
+        <label>背景<textarea id="mobile-brief-background" rows="3" placeholder="必要背景和上下文"></textarea></label>
+        <label>约束<textarea id="mobile-brief-constraints" rows="3" placeholder="格式、语气、范围、禁区"></textarea></label>
+        <label>验收口径<textarea id="mobile-brief-acceptance" rows="3" placeholder="怎样才算可交付?"></textarea></label>
+      </div>
+      <div class="mobile-brief-actions">
+        <button id="mobile-brief-cancel" type="button">取消</button>
+        <button id="mobile-brief-save" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <aside id="mobile-fork-drawer" class="drawer hidden">
+    <div class="drawer-head"><span>分叉树</span><button id="mobile-fork-close" class="ghost-btn" type="button">×</button></div>
+    <div id="mobile-fork-body" class="drawer-body"><p class="empty-hint">先对话再分叉</p></div>
+  </aside>
 
   <div id="toast" class="toast hidden"></div>
   <script type="module" src="/mobile.js"></script>

@@ -10,6 +10,8 @@
   <header class="topbar">
     <button id="palette-btn" class="ghost-btn" title="Cmd+K">⌘K</button>
     <span class="brand">Pi 工作台</span>
+    <span id="top-context" class="top-context">准备连接 Pi</span>
+    <a class="top-link" href="/mobile" target="_blank" rel="noreferrer">手机入口</a>
     <span id="conn" class="conn" title="连接状态">●</span>
   </header>
 
@@ -20,14 +22,94 @@
         <input id="proj-search" type="search" placeholder="搜索项目…" autocomplete="off">
       </div>
       <div id="proj-list" class="proj-list"></div>
-      <button id="new-proj-btn" class="new-proj-btn">＋ 新建项目</button>
+      <div class="left-actions">
+        <button id="new-proj-btn" class="new-proj-btn">＋ 新建项目</button>
+        <button id="import-proj-btn" class="new-proj-btn">⇧ 导入项目</button>
+      </div>
+      <input id="import-proj-file" type="file" accept=".zip,application/zip" hidden>
     </aside>
 
     <!-- 中栏: 对话 + 状态机 -->
     <main class="center-panel">
       <div id="state-no-project" class="state-view">
-        <div class="state-icon">📂</div>
-        <p>选择项目，或新建一个</p>
+        <section class="dashboard-shell" aria-label="工作台总览">
+          <div class="dashboard-hero">
+            <div>
+              <p class="eyebrow">Pi Workbench</p>
+              <h1>把想法推进到可交付产物</h1>
+              <p class="hero-copy">选择一个项目继续对话，或从模板开一个新项目。这里会汇总模型、局域网入口、产物和最近工作。</p>
+            </div>
+            <div class="hero-actions">
+              <button class="primary-action" id="dashboard-new-project" type="button">新建项目</button>
+              <button class="secondary-action" id="dashboard-open-palette" type="button">快速打开</button>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="metric-card">
+              <span class="metric-label">项目</span>
+              <strong id="metric-projects">--</strong>
+              <small>当前工作空间</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">产物</span>
+              <strong id="metric-artifacts">--</strong>
+              <small>已保存文档/表格/剧本</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">会话</span>
+              <strong id="metric-sessions">--</strong>
+              <small>可继续的 Pi 线程</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">技能</span>
+              <strong id="metric-skills">--</strong>
+              <small>项目内可调用能力</small>
+            </article>
+          </div>
+
+          <section class="starter-panel">
+            <div class="panel-head">
+              <span>产出起手式</span>
+              <small>一键进入可交付流程</small>
+            </div>
+            <div id="starter-grid" class="starter-grid"></div>
+          </section>
+
+          <div class="dashboard-lanes">
+            <section class="dashboard-panel">
+              <div class="panel-head">
+                <span>运行状态</span>
+                <small id="dashboard-health-text">检查中</small>
+              </div>
+              <div id="status-chips" class="status-chips"></div>
+            </section>
+
+            <section class="dashboard-panel">
+              <div class="panel-head">
+                <span>最近项目</span>
+                <small>点击继续</small>
+              </div>
+              <div id="recent-projects" class="recent-projects"></div>
+            </section>
+
+            <section class="dashboard-panel dashboard-actions-panel">
+              <div class="panel-head">
+                <span>下一步行动</span>
+                <small>跨项目推进</small>
+              </div>
+              <div id="dashboard-actions" class="dashboard-actions"></div>
+            </section>
+          </div>
+
+          <section class="dashboard-panel dashboard-activity-panel">
+            <div class="panel-head">
+              <span>最近活动</span>
+              <small>产物与会话</small>
+            </div>
+            <div id="dashboard-activity" class="dashboard-activity"></div>
+          </section>
+        </section>
       </div>
       <div id="state-loading" class="state-view hidden">
         <div class="spinner"></div><p>加载中…</p>
@@ -62,13 +144,22 @@
     <aside class="right-panel">
       <div class="right-head">
         <span id="preview-title">活页本</span>
-        <button id="qr-btn" class="ghost-btn">扫码</button>
+        <div class="preview-actions">
+          <button id="edit-artifact-btn" class="ghost-btn" disabled>编辑</button>
+          <button id="history-artifact-btn" class="ghost-btn" disabled>历史</button>
+          <button id="copy-artifact-btn" class="ghost-btn" disabled>复制</button>
+          <button id="download-artifact-btn" class="ghost-btn" disabled>下载</button>
+          <button id="raw-artifact-btn" class="ghost-btn" disabled>原文</button>
+          <button id="trash-artifact-btn" class="ghost-btn danger" disabled>移除</button>
+          <button id="qr-btn" class="ghost-btn">扫码</button>
+        </div>
       </div>
       <div id="preview-body" class="preview-body">
         <div class="preview-empty">
-          <div class="preview-empty-icon">📄</div>
-          <div class="preview-empty-title">活页本</div>
-          <div class="preview-empty-sub">产物保存后在这里渲染 — 小说排成书页，剧本排成剧本页</div>
+          <div class="preview-empty-icon">▦</div>
+          <div class="preview-empty-title">产物活页本</div>
+          <div class="preview-empty-sub">保存 Markdown、CSV 或 Fountain 后，这里会直接渲染成可检查的交付视图。</div>
+          <button id="preview-mobile-btn" class="secondary-action compact" type="button">扫码在手机看</button>
         </div>
       </div>
     </aside>
@@ -94,6 +185,60 @@
       <img id="qr-img" alt="二维码">
       <p id="qr-target" class="qr-target"></p>
       <button id="qr-close" class="ghost-btn">关闭</button>
+    </div>
+  </div>
+
+  <div id="artifact-editor-modal" class="qr-modal hidden">
+    <div class="artifact-editor-card">
+      <div class="artifact-editor-head">
+        <div>
+          <h3 id="artifact-editor-title">编辑产物</h3>
+          <p id="artifact-editor-meta"></p>
+        </div>
+        <button id="artifact-editor-close" class="ghost-btn" type="button">关闭</button>
+      </div>
+      <input id="artifact-editor-file" class="text-input hidden" type="text" placeholder="文件名，例如 brief.md">
+      <textarea id="artifact-editor-text" class="artifact-editor-text" spellcheck="false"></textarea>
+      <div class="artifact-editor-actions">
+        <button id="artifact-editor-cancel" class="ghost-btn" type="button">取消</button>
+        <button id="artifact-editor-save" class="primary-action compact" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="artifact-history-modal" class="qr-modal hidden">
+    <div class="artifact-history-card">
+      <div class="artifact-editor-head">
+        <div>
+          <h3>版本历史</h3>
+          <p id="artifact-history-meta"></p>
+        </div>
+        <button id="artifact-history-close" class="ghost-btn" type="button">关闭</button>
+      </div>
+      <div id="artifact-history-list" class="artifact-history-list"></div>
+    </div>
+  </div>
+
+  <div id="project-brief-modal" class="qr-modal hidden">
+    <div class="project-brief-card">
+      <div class="artifact-editor-head">
+        <div>
+          <h3>项目简报</h3>
+          <p id="project-brief-meta"></p>
+        </div>
+        <button id="project-brief-close" class="ghost-btn" type="button">关闭</button>
+      </div>
+      <div class="project-brief-form">
+        <label><span>目标</span><textarea id="project-brief-goal" rows="2" placeholder="这个项目最终要产出什么?"></textarea></label>
+        <label><span>受众</span><textarea id="project-brief-audience" rows="2" placeholder="谁会阅读、使用或验收这些产物?"></textarea></label>
+        <label><span>背景</span><textarea id="project-brief-background" rows="3" placeholder="必要背景、已有信息、业务/创作语境"></textarea></label>
+        <label><span>约束</span><textarea id="project-brief-constraints" rows="3" placeholder="格式、语气、范围、禁区、必须保留的信息"></textarea></label>
+        <label><span>验收口径</span><textarea id="project-brief-acceptance" rows="3" placeholder="怎样才算可交付、好用、能直接拿去使用?"></textarea></label>
+      </div>
+      <div class="artifact-editor-actions">
+        <button id="project-brief-cancel" class="ghost-btn" type="button">取消</button>
+        <button id="project-brief-save" class="primary-action compact" type="button">保存简报</button>
+      </div>
     </div>
   </div>
 

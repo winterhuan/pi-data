@@ -1,23 +1,6 @@
-## gstack (REQUIRED — global install)
+## Local workflow
 
-**Before doing ANY work, verify gstack is installed:**
+Use the repository scripts and local tools directly.
+For browser checks, use Codex Browser or another available local browser automation surface.
 
-```bash
-test -d ~/.Codex/skills/gstack/bin && echo "GSTACK_OK" || echo "GSTACK_MISSING"
-```
-
-If GSTACK_MISSING: STOP. Do not proceed. Tell the user:
-
-> gstack is required for all AI-assisted work in this repo.
-> Install it:
-> ```bash
-> git clone --depth 1 https://github.com/garrytan/gstack.git ~/.Codex/skills/gstack
-> cd ~/.Codex/skills/gstack && ./setup --team
-> ```
-> Then restart your AI coding tool.
-
-Do not skip skills, ignore gstack errors, or work around missing gstack.
-
-Using gstack skills: After install, skills like /qa, /ship, /review, /investigate,
-and /browse are available. Use /browse for all web browsing.
-Use ~/.Codex/skills/gstack/... for gstack file paths (the global path).
+Do not require project-specific global AI tooling before working in this repo.

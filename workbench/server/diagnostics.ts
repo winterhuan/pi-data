@@ -71,7 +71,9 @@ export function parsePiCliVersionOutput(stdout: string, stderr: string): string 
 
 async function piCliVersion(): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync("pi", ["--version"]);
+    const command = process.platform === "win32" ? "cmd.exe" : "pi";
+    const args = process.platform === "win32" ? ["/d", "/s", "/c", "pi --version"] : ["--version"];
+    const { stdout, stderr } = await execFileAsync(command, args);
     return parsePiCliVersionOutput(stdout, stderr);
   } catch {
     return null;
